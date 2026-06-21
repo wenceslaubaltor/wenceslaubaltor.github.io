@@ -25,6 +25,14 @@ Documento de referência do tutorial completo, desde a estrutura HTML até o dep
   - [Deploy 3: Git local e primeiro commit](#deploy-3--git-local-e-primeiro-commit)
   - [Deploy 4: Criar repo no GitHub e push](#deploy-4--criar-repo-no-github-e-push)
   - [Deploy 5: GitHub Pages no ar](#deploy-5--github-pages-no-ar)
+- [Parte 3 — CSS Grid (seção de projetos)](#parte-3--css-grid-seção-de-projetos)
+  - [Grid 1: Flexbox vs Grid + ativação básica](#grid-1--flexbox-vs-grid--ativação-básica)
+  - [Grid 2: Controle fino de larguras e espaçamentos](#grid-2--controle-fino-de-larguras-e-espaçamentos)
+  - [Grid 3: repeat() e minmax()](#grid-3--repeat-e-minmax)
+  - [Grid 4: auto-fit (responsivo sem media queries)](#grid-4--auto-fit-responsivo-sem-media-queries)
+  - [Grid 5: Posicionamento (span, grid-column, grid-row)](#grid-5--posicionamento-span-grid-column-grid-row)
+  - [Grid 6: grid-template-areas (layout em palavras)](#grid-6--grid-template-areas-layout-em-palavras)
+  - [Grid 7: Polimento, commit e deploy](#grid-7--polimento-commit-e-deploy)
 - [Anexo A — Código final](#anexo-a--código-final)
 - [Anexo B — Glossário de conceitos](#anexo-b--glossário-de-conceitos)
 - [Anexo C — Comandos úteis](#anexo-c--comandos-úteis)
@@ -459,6 +467,410 @@ curl -sI https://wenceslaubaltor.github.io/ | head -5
 
 ---
 
+# Parte 3 — CSS Grid (seção de projetos)
+
+Adição posterior ao tutorial: uma seção `.projetos` com 5 cards renderizados em grid responsivo. Cobre o sistema CSS Grid do zero, terminando com layout via `grid-template-areas`.
+
+## Grid 1 — Flexbox vs Grid + ativação básica
+
+**Flexbox e Grid não competem — se complementam.**
+
+| Sistema | Dimensão | Tipicamente usado para |
+|---------|----------|------------------------|
+| **Flexbox** | 1D (linha **ou** coluna) | Navegação, lista de botões, distribuir num eixo |
+| **Grid** | 2D (linhas **e** colunas simultaneamente) | Galerias, dashboards, layouts de página |
+
+Outra forma de pensar:
+- **Flexbox** é "content-out": "tenho 3 itens, distribui no espaço"
+- **Grid** é "layout-in": "tenho uma grade 3×2, coloca itens nas células"
+
+### Sintaxe básica
+
+| Propriedade | Onde vai | Função |
+|-------------|----------|--------|
+| `display: grid` | No container | Ativa o Grid |
+| `grid-template-columns` | No container | Define colunas e larguras |
+| `gap` | No container | Espaço entre células (igual ao Flexbox) |
+| `fr` | Unidade | "Fração" do espaço disponível |
+
+### Unidade `fr`
+`1fr 1fr 1fr` = três colunas iguais. Inclui o `gap` no cálculo (porcentagens não fariam isso).
+
+### Recap
+
+| Conceito | Onde apareceu |
+|----------|---------------|
+| Flexbox = 1D, Grid = 2D | Conceito teórico |
+| Misturar os dois | `.projetos` flex, `.grid-projetos` grid |
+| Ativar Grid | `display: grid` |
+| Grid sem template-columns | Default = 1 coluna |
+| 3 colunas iguais | `grid-template-columns: 1fr 1fr 1fr` |
+| HTML semântico para cards | `<article>` |
+| Acomodar layout flex existente | `flex-wrap: wrap` + `flex-basis: 100%` |
+
+---
+
+## Grid 2 — Controle fino de larguras e espaçamentos
+
+### Unidades em `grid-template-columns`
+
+| Unidade | Comportamento |
+|---------|---------------|
+| `1fr` | Fração do espaço **livre** |
+| `px` | Tamanho fixo absoluto |
+| `%` | Porcentagem do container (raro — `fr` é melhor) |
+| `auto` | "O que o conteúdo precisar" |
+| `min-content` | Largura da maior palavra |
+| `max-content` | Largura do texto sem quebra |
+| `minmax(min, max)` | Limites inferior e superior |
+
+### Por que `fr` ganha de `%`
+
+Container de 400px, `gap: 16px`, 3 colunas:
+- `33.33%` cada → 133px × 3 + 32px gaps = **431px** (estoura!)
+- `1fr` cada → (400 − 32) / 3 = **122.67px** (bate certo)
+
+`fr` é **gap-aware**, `%` é cego ao gap.
+
+### `gap` separado
+
+| Sintaxe | O que faz |
+|---------|-----------|
+| `gap: 16px` | Igual nas duas direções |
+| `gap: 24px 16px` | Vertical / horizontal (igual ao padding) |
+| `row-gap: 24px` + `column-gap: 16px` | Versão expandida |
+
+### Padrões clássicos de `template-columns`
+
+```css
+grid-template-columns: 240px 1fr;             /* sidebar + conteúdo */
+grid-template-columns: 200px 1fr 300px;       /* sidebar + main + aside */
+grid-template-columns: auto 1fr;              /* ícone + texto */
+grid-template-columns: 1fr 2fr;               /* segunda 2× a primeira */
+```
+
+### Recap
+
+| Conceito | Onde apareceu |
+|----------|---------------|
+| Unidades em Grid | `fr`, `px`, `%`, `auto`, `min-content`, `max-content` |
+| `fr` > `%` | `fr` desconta o `gap` antes de dividir |
+| `gap` 2 valores | row / column |
+| Linhas automáticas | Grid cria linhas conforme itens chegam |
+| Padrões de sidebar | `240px 1fr`, `auto 1fr` |
+
+---
+
+## Grid 3 — `repeat()` e `minmax()`
+
+### `repeat()`: fim da repetição
+
+| Antes | Depois |
+|-------|--------|
+| `1fr 1fr 1fr` | `repeat(3, 1fr)` |
+| `100px 100px 100px 100px` | `repeat(4, 100px)` |
+| `1fr 1fr 2fr 1fr 1fr 2fr` | `repeat(2, 1fr 1fr 2fr)` |
+| `200px 1fr 1fr 1fr 1fr 200px` | `200px repeat(4, 1fr) 200px` |
+
+`repeat()` pode ser misturado com colunas fixas.
+
+### `minmax(min, max)`
+
+| Uso | O que faz |
+|-----|-----------|
+| `minmax(200px, 1fr)` | Nunca menor que 200px, pode crescer |
+| `minmax(200px, 400px)` | Fica entre 200 e 400px |
+| `minmax(100px, auto)` | Mínimo 100px, cresce com conteúdo |
+| `minmax(0, 1fr)` | Tira a "trava" do `auto` que faz estourar com conteúdo grande |
+
+### A armadilha do `1fr`
+
+`1fr` é tecnicamente `minmax(auto, 1fr)`. O `auto` no mínimo = "tamanho do conteúdo". Conteúdo gigante (URL longa, imagem sem CSS) estoura a coluna. Conserto: `minmax(0, 1fr)`.
+
+### `grid-template-rows` vs `grid-auto-rows`
+
+| Propriedade | Função |
+|-------------|--------|
+| `grid-template-rows` | Define linhas **explicitamente** |
+| `grid-auto-rows` | Define tamanho de linhas **criadas automaticamente** |
+
+Sem `grid-template-rows`, **todas** as linhas são auto, e `grid-auto-rows` controla todas.
+
+### Recap
+
+| Conceito | Onde apareceu |
+|----------|---------------|
+| `repeat(N, padrão)` | `repeat(3, 1fr)` |
+| Misturar repeat com fixos | `200px repeat(4, 1fr) 200px` |
+| `minmax(min, max)` | Limites de tamanho |
+| Altura mínima das linhas | `grid-auto-rows: minmax(120px, auto)` |
+| Conserto de estouro | `minmax(0, 1fr)` |
+
+---
+
+## Grid 4 — `auto-fit` (responsivo sem media queries)
+
+**A etapa mais transformadora do tutorial.**
+
+### `auto-fit` vs `auto-fill`
+
+| Modo | Quando sobra espaço |
+|------|----------------------|
+| **`auto-fit`** | Estica colunas existentes para preencher |
+| **`auto-fill`** | Cria colunas vazias invisíveis para reservar |
+
+**Regra prática:** quase sempre você quer `auto-fit`.
+
+### O one-liner mágico
+
+```css
+grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+```
+
+> "Repita colunas quantas couberem, cada uma com mínimo 180px e podendo crescer."
+
+Comportamento em diferentes larguras (com `gap: 16px`):
+
+| Largura | Colunas |
+|---------|---------|
+| 300px | 1 |
+| 500px | 2 |
+| 800px | 3 |
+| 1200px | 5 |
+
+Sem **nenhuma** media query.
+
+### Comparação direta
+
+**Sem `auto-fit`** (6 blocos de @media):
+```css
+.grid { grid-template-columns: 1fr; }
+@media (min-width: 500px)  { .grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 700px)  { .grid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1000px) { .grid { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 1300px) { .grid { grid-template-columns: repeat(5, 1fr); } }
+```
+
+**Com `auto-fit`** (1 linha):
+```css
+.grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+```
+
+### Quando media queries continuam valendo
+
+`auto-fit` resolve **número de colunas de uma grade homogênea**. Ainda precisa de media queries para:
+- Mudar `flex-direction` ou `grid-template-areas`
+- Mostrar/esconder elementos
+- Mudar tipografia drasticamente
+- Reorganizar layout estrutural
+
+### Recap
+
+| Conceito | Onde apareceu |
+|----------|---------------|
+| Decidir colunas dinamicamente | `auto-fit` |
+| `auto-fit` vs `auto-fill` | Estica vs reserva |
+| One-liner mágico | `repeat(auto-fit, minmax(180px, 1fr))` |
+| Mobile-first natural | Já na base, sem @media |
+| Escolher o `minmax` mínimo | Pelo conteúdo, não pelo dispositivo |
+
+---
+
+## Grid 5 — Posicionamento (`span`, `grid-column`, `grid-row`)
+
+### Grid lines: numeração
+
+Grid numera **linhas** (não células). Para 3 colunas, linhas verticais são numeradas de 1 a 4.
+
+```
+linha 1     linha 2     linha 3     linha 4
+   |           |           |           |
+   v           v           v           v
+   ┌───────────┬───────────┬───────────┐
+   │  col 1    │  col 2    │  col 3    │
+   └───────────┴───────────┴───────────┘
+```
+
+Posicionar item = dizer entre quais linhas ele vive.
+
+### Sintaxes
+
+| Propriedade | Exemplo | Significado |
+|-------------|---------|-------------|
+| `grid-column: 1 / 3` | Da linha 1 à linha 3 | Ocupa colunas 1 e 2 |
+| `grid-column: 1 / -1` | Da linha 1 à última | Ocupa **todas** as colunas |
+| `grid-column: span 2` | A partir de onde estaria, 2 colunas | Atalho mais usado |
+| `grid-row: 1 / 3` | Mesma lógica, vertical | Item se estica em 2 linhas |
+| `grid-row: span 2` | Atalho vertical | Card "alto" |
+
+### Por que `span` é mais portátil
+
+Com `auto-fit`, o número de colunas é dinâmico. `1 / 3` quebra em telas pequenas. `span 2` se adapta — se só tem 1 coluna, ocupa 1 coluna. Mais defensivo.
+
+### Seletor composto
+
+`.projeto-card.destaque` (sem espaço) = elemento com **ambas** as classes. Especificidade maior que `.projeto-card` sozinho, sem precisar de `!important`.
+
+### Padrões úteis
+
+```css
+.header   { grid-column: 1 / -1; }           /* ocupa todas as colunas */
+.imagem   { grid-row: span 2; }              /* ocupa 2 linhas */
+.hero     { grid-column: span 2;
+            grid-row: span 2; }              /* 2 col × 2 linhas */
+.sidebar  { grid-column: 2 / 4; }            /* posição explícita */
+```
+
+### Recap
+
+| Conceito | Onde apareceu |
+|----------|---------------|
+| Grid lines | Numeração de 1 a N+1 |
+| `grid-column: start / end` | Posição explícita |
+| `grid-column: 1 / -1` | Da primeira à última |
+| `grid-column: span N` | Atalho portátil |
+| Seletor composto | `.projeto-card.destaque` |
+| Pílula visual | `border-radius: 999px` |
+
+---
+
+## Grid 6 — `grid-template-areas` (layout em palavras)
+
+### Conceito
+
+Desenha o layout com strings nomeando cada célula. Lê-se literalmente como vai parecer.
+
+```css
+grid-template-areas:
+    "header header"
+    "sidebar main"
+    "footer footer";
+```
+
+### Sintaxe
+
+Duas partes:
+1. **No container:** strings nomeando células
+2. **Em cada filho:** `grid-area: <nome>`
+
+| Padrão | Significado |
+|--------|-------------|
+| `"a b c"` | 1 linha, 3 colunas |
+| `"a a b"` | `a` ocupa 2 colunas, `b` 1 |
+| `"a a" "b c"` | 2 linhas, 2 colunas; `a` ocupa toda a linha 1 |
+| `"a . b"` | Ponto = célula vazia |
+
+**Regra crítica:** células com mesmo nome **devem formar um retângulo**, ou o CSS é inválido.
+
+### O refactor do `<main>`
+
+Antes — Flexbox com wrap (4 regras escondendo o layout):
+```css
+main { display: flex; flex-direction: row; flex-wrap: wrap; }
+.perfil, .links { flex: 1; }
+.projetos { flex-basis: 100%; }
+```
+
+Depois — Grid com areas (layout desenhado no código):
+```css
+main {
+    display: grid;
+    grid-template-areas:
+        "perfil   links"
+        "projetos projetos";
+}
+.perfil   { grid-area: perfil; }
+.links    { grid-area: links; }
+.projetos { grid-area: projetos; }
+```
+
+### Padrão para responsivo
+
+```css
+/* Mobile: tudo empilhado */
+main {
+    grid-template-areas:
+        "perfil"
+        "links"
+        "projetos";
+}
+
+@media (min-width: 768px) {
+    main {
+        grid-template-columns: 1fr 1fr;
+        grid-template-areas:
+            "perfil   links"
+            "projetos projetos";
+    }
+}
+```
+
+Os `grid-area` dos filhos ficam fora do @media — só o **layout** muda.
+
+### Recap
+
+| Conceito | Onde apareceu |
+|----------|---------------|
+| `grid-template-areas` | Layout com strings |
+| `grid-area: <nome>` | Atribui filho a uma área |
+| Mesmo nome adjacente | Funde em retângulo |
+| `.` | Célula vazia |
+| Áreas estáveis | Filhos sabem seu nome globalmente; só o template muda nos breakpoints |
+| Areas vs span | Areas = layout inteiro; span = ajustes pontuais |
+
+---
+
+## Grid 7 — Polimento, commit e deploy
+
+Sem conceito novo de Grid. Costurar tudo:
+1. Pequeno polimento (hover + transition nos cards)
+2. Conferir tudo localmente
+3. `git add` + `git commit` (com mensagem multi-linha explicando *por quê*)
+4. `git push`
+5. Aguardar Pages rebuildar (`until <condição>; do sleep 5; done`)
+6. Confirmar HTTP 200 + status `built`
+
+### Convenção de commit multi-linha
+
+```
+Linha 1: resumo imperativo curto (≤72 chars)
+[linha em branco]
+Parágrafo explicando o *porquê* e contexto da mudança.
+Bom para refatorações grandes ou mudanças com várias partes.
+```
+
+### Padrão `until` para polling
+
+```bash
+until [ "$(comando-que-retorna-status)" = "estado-desejado" ]; do
+    sleep 5
+done
+```
+
+Mais limpo que `sleep <fixo>`: rápido se finalizar antes, robusto se demorar mais.
+
+### Hard reload
+
+`Ctrl+Shift+R` ignora cache do navegador. Útil logo após push para garantir que está vendo a versão nova.
+
+---
+
+## Comparação Flexbox vs Grid: quando usar cada um
+
+| Cenário | Melhor escolha |
+|---------|----------------|
+| Barra de navegação horizontal | Flexbox |
+| Lista de tags/botões | Flexbox |
+| Centralizar 1 item no meio da tela | Flexbox |
+| Card/sidebar com 3 elementos empilhados | Flexbox column |
+| **Galeria de cards responsiva** | **Grid + auto-fit** |
+| **Dashboard com sidebar + main + aside** | **Grid + areas** |
+| Layout controlando linhas E colunas | Grid |
+| "Espalha o resto do espaço" | Flexbox (`flex: 1`) |
+| "Ocupa 2 células" | Grid (`span 2`) |
+
+---
+
 # Anexo A — Código final
 
 ## `index.html`
@@ -490,6 +902,33 @@ curl -sI https://wenceslaubaltor.github.io/ | head -5
                 <li><a href="https://linkedin.com/">LinkedIn</a></li>
                 <li><a href="mailto:baltorw@gmail.com">E-mail</a></li>
             </ul>
+        </section>
+
+        <section class="projetos">
+            <h2>Meus projetos</h2>
+            <div class="grid-projetos">
+                <article class="projeto-card destaque">
+                    <span class="badge">Destaque</span>
+                    <h3>Página de Perfil</h3>
+                    <p>Site pessoal responsivo construído com HTML e CSS puros, hospedado no GitHub Pages.</p>
+                </article>
+                <article class="projeto-card">
+                    <h3>Lista de Tarefas</h3>
+                    <p>Aplicativo simples de to-do com persistência local. Praticando manipulação de DOM.</p>
+                </article>
+                <article class="projeto-card">
+                    <h3>Calculadora</h3>
+                    <p>Calculadora estilizada com operações básicas. Foco em layout via CSS Grid.</p>
+                </article>
+                <article class="projeto-card">
+                    <h3>Conversor de Moedas</h3>
+                    <p>Pequeno conversor que consome uma API pública. Prática inicial com fetch.</p>
+                </article>
+                <article class="projeto-card">
+                    <h3>Quiz Interativo</h3>
+                    <p>Jogo de perguntas e respostas com pontuação. Foco em lógica e DOM.</p>
+                </article>
+            </div>
         </section>
     </main>
 </body>
@@ -567,10 +1006,17 @@ body {
 main {
     width: 100%;
     max-width: 420px;
-    display: flex;
-    flex-direction: column;
+    display: grid;
     gap: var(--espaco-grande);
+    grid-template-areas:
+        "perfil"
+        "links"
+        "projetos";
 }
+
+.perfil    { grid-area: perfil; }
+.links     { grid-area: links; }
+.projetos  { grid-area: projetos; }
 
 /* ---------- Card de perfil ---------- */
 .perfil {
@@ -647,17 +1093,84 @@ main {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-/* ---------- DESKTOP (≥ 768px): duas colunas ---------- */
+/* ---------- Seção de projetos (card externo) ---------- */
+.projetos {
+    background-color: var(--cor-card);
+    padding: var(--espaco-grande);
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--espaco-medio);
+}
+
+/* ---------- Grid de cards de projeto ---------- */
+.grid-projetos {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1.5rem 1rem;
+    grid-auto-rows: minmax(120px, auto);
+}
+
+.projeto-card {
+    padding: var(--espaco-medio);
+    background-color: var(--cor-fundo);
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+
+    transition: transform 0.15s ease,
+                box-shadow 0.15s ease,
+                border-color 0.15s ease;
+}
+
+.projeto-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--cor-destaque);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+}
+
+.projeto-card h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: var(--espaco-pequeno);
+}
+
+.projeto-card p {
+    font-size: 0.875rem;
+    color: var(--cor-texto-suave);
+}
+
+/* ---------- Card destaque (ocupa 2 colunas quando há espaço) ---------- */
+.projeto-card.destaque {
+    grid-column: span 2;
+    background-color: var(--cor-card);
+    border-color: var(--cor-destaque);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+}
+
+.badge {
+    display: inline-block;
+    align-self: flex-start;
+    padding: 0.125rem 0.5rem;
+    margin-bottom: var(--espaco-pequeno);
+    background-color: var(--cor-destaque);
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* ---------- DESKTOP (≥ 768px) ---------- */
 @media (min-width: 768px) {
     main {
         max-width: 760px;
-        flex-direction: row;
-        align-items: stretch;
-    }
-
-    .perfil,
-    .links {
-        flex: 1;
+        grid-template-columns: 1fr 1fr;
+        grid-template-areas:
+            "perfil   links"
+            "projetos projetos";
     }
 
     .perfil {
@@ -742,6 +1255,29 @@ main {
 | Mobile-first | Base = mobile, `@media (min-width)` adiciona desktop |
 | Breakpoint | Largura onde o layout muda |
 | `prefers-color-scheme` | Media query que detecta modo escuro do SO |
+
+## CSS — Grid
+
+| Termo | Definição |
+|-------|-----------|
+| CSS Grid | Sistema de layout 2D (linhas + colunas simultâneas) |
+| Grid container | Elemento com `display: grid` |
+| Grid item | Filho direto de um grid container |
+| Grid line | Linha invisível entre células, numerada de 1 a N+1 |
+| `grid-template-columns` | Define quantas colunas e suas larguras |
+| `grid-template-rows` | Define linhas **explicitamente** |
+| `grid-auto-rows` | Define tamanho de linhas **automáticas** |
+| `fr` | "Fração" do espaço livre (gap-aware) |
+| `repeat(N, padrão)` | Atalho para repetir colunas/linhas |
+| `minmax(min, max)` | Define limites de tamanho |
+| `auto-fit` | Cria quantas colunas couberem, estica para preencher |
+| `auto-fill` | Cria quantas couberem, mas mantém células vazias |
+| `grid-column: span N` | Item ocupa N colunas a partir de onde estaria |
+| `grid-row: span N` | Equivalente vertical |
+| `grid-column: 1 / -1` | Da primeira à última coluna |
+| `grid-template-areas` | Layout desenhado com strings de nomes |
+| `grid-area: <nome>` | Atribui filho a uma área nomeada |
+| `.` em areas | Célula vazia |
 
 ## CSS — interatividade
 
