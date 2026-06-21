@@ -5,7 +5,7 @@ Documento de referência do tutorial completo, desde a estrutura HTML até o dep
 - **Site no ar:** https://wenceslaubaltor.github.io/
 - **Repositório:** https://github.com/wenceslaubaltor/wenceslaubaltor.github.io
 - **Pasta local:** `~/projetos/perfil-web/`
-- **Stack:** HTML5 + CSS3 puros (sem frameworks, sem JavaScript)
+- **Stack:** HTML5 + CSS3 + JavaScript vanilla (sem frameworks, sem build tools)
 
 ---
 
@@ -33,6 +33,14 @@ Documento de referência do tutorial completo, desde a estrutura HTML até o dep
   - [Grid 5: Posicionamento (span, grid-column, grid-row)](#grid-5--posicionamento-span-grid-column-grid-row)
   - [Grid 6: grid-template-areas (layout em palavras)](#grid-6--grid-template-areas-layout-em-palavras)
   - [Grid 7: Polimento, commit e deploy](#grid-7--polimento-commit-e-deploy)
+- [Parte 4 — JavaScript básico (interatividade)](#parte-4--javascript-básico-interatividade)
+  - [JS 1: Console, variáveis e `<script defer>`](#js-1--console-variáveis-e-script-defer)
+  - [JS 2: DOM querying (contador automático)](#js-2--dom-querying-contador-automático)
+  - [JS 3: Eventos e funções (botão de oi)](#js-3--eventos-e-funções-botão-de-oi)
+  - [JS 4: classList.toggle (botão de tema)](#js-4--classlisttoggle-botão-de-tema)
+  - [JS 5: localStorage (tema persistente)](#js-5--localstorage-tema-persistente)
+  - [JS 6: Arrays + filter + input (busca em tempo real)](#js-6--arrays--filter--input-busca-em-tempo-real)
+  - [JS 7: Polimento, commit e deploy](#js-7--polimento-commit-e-deploy)
 - [Anexo A — Código final](#anexo-a--código-final)
 - [Anexo B — Glossário de conceitos](#anexo-b--glossário-de-conceitos)
 - [Anexo C — Comandos úteis](#anexo-c--comandos-úteis)
@@ -871,6 +879,295 @@ Mais limpo que `sleep <fixo>`: rápido se finalizar antes, robusto se demorar ma
 
 ---
 
+# Parte 4 — JavaScript básico (interatividade)
+
+Até aqui a página era 100% estática: o usuário só lia. Nesta parte, JavaScript entra para fazer a página **reagir** — clicar em botão, alternar tema, lembrar preferência entre visitas e filtrar cards em tempo real.
+
+**Princípio guia da parte:** CSS define **como cada estado fica**; JavaScript só **liga e desliga classes** ou **lê e escreve valores**. Quase nunca JS toca em estilo diretamente.
+
+## JS 1 — Console, variáveis e `<script defer>`
+
+Primeiro arquivo JS conectado à página.
+
+### Conceitos
+- **`<script src="…" defer>`** — `defer` faz o navegador esperar o HTML estar pronto antes de rodar o script. Sem ele, `querySelector` em elementos abaixo do `<script>` retornaria `null`.
+- **`console.log(...)`** — imprime no DevTools (F12 → Console). É a primeira ferramenta de debug que você vai usar a vida toda.
+- **`const`** — variável que **não vai ser reatribuída**. Default da comunidade moderna.
+- **`let`** — variável que **será reatribuída**. Usa só quando precisa.
+- **Tipos primitivos:** string (`"abc"`), number (`42`), boolean (`true`/`false`).
+- **Template literal:** crase + `${variavel}` para interpolar. Substitui concatenação com `+`.
+
+```js
+const nome = "Wenceslau";
+let cardsAtuais = 5;
+const aprendendoJs = true;
+
+console.log(`Hello, eu sou ${nome}!`);
+cardsAtuais = 6;
+```
+
+### Quando usar `const` vs `let`
+Padrão: comece **tudo com `const`**. Só troque para `let` se o linter (ou seu próprio raciocínio) detectar reatribuição real. Torna o código mais fácil de ler — `const` é uma promessa de imutabilidade do "vínculo" entre nome e valor.
+
+---
+
+## JS 2 — DOM querying (contador automático)
+
+### Conceitos
+- **DOM** (Document Object Model): a árvore de objetos JavaScript que representa o HTML. Acessada pela variável global `document`.
+- **`document.querySelector(seletor)`** — retorna o **primeiro** elemento que casa com o seletor CSS (ou `null`).
+- **`document.querySelectorAll(seletor)`** — retorna uma **`NodeList`** com todos os elementos que casam (tem `.length`, aceita `forEach`).
+- **`.textContent`** — lê ou escreve o **texto** de um elemento.
+
+```js
+const cards = document.querySelectorAll('.projeto-card');
+const tituloProjetos = document.querySelector('.projetos h2');
+tituloProjetos.textContent = `Meus projetos (${cards.length})`;
+```
+
+### Por que `defer` paga o aluguel agora
+Sem `defer`, o script rodaria antes do HTML ser parseado → `querySelectorAll` retornaria lista vazia. Aquele detalhe técnico da JS 1 era exatamente para isso.
+
+### Seletor restrito
+`'.projetos h2'` (com espaço) significa "h2 **dentro de** elemento com classe `.projetos`". Sem o prefixo, o primeiro h2 da página seria o de "Meus links".
+
+---
+
+## JS 3 — Eventos e funções (botão de oi)
+
+### Conceitos
+- **Função** — pedaço de código guardado num nome, que só roda quando chamado.
+- **Arrow function** (`=>`) — forma moderna e enxuta:
+  ```js
+  const cumprimentar = () => {
+      console.log("Olá!");
+  };
+  cumprimentar();   // RODA aqui
+  ```
+- **`addEventListener('evento', funcao)`** — quando esse evento acontecer nesse elemento, chame essa função.
+- **Eventos comuns:** `'click'`, `'input'`, `'submit'`, `'keydown'`.
+
+### Construção: botão "Mandar um oi" com contador
+```html
+<button id="botao-oi" type="button">Mandar um oi</button>
+<p id="mensagem-oi"></p>
+```
+
+```js
+const botaoOi = document.querySelector('#botao-oi');
+const mensagemOi = document.querySelector('#mensagem-oi');
+let contagemOis = 0;
+
+const aoClicarOi = () => {
+    contagemOis = contagemOis + 1;
+    mensagemOi.textContent = `Oi recebido! Você já mandou ${contagemOis}.`;
+};
+
+botaoOi.addEventListener('click', aoClicarOi);
+```
+
+### O erro clássico: parênteses no listener
+- `addEventListener('click', aoClicarOi)` → **certo**: passa a receita.
+- `addEventListener('click', aoClicarOi())` → **errado**: chama a função **uma vez** e passa o **resultado** (`undefined`) como handler.
+
+### Por que `let` para o contador
+`contagemOis` muda a cada clique → precisa ser `let`. Tudo o mais (referências DOM, a função em si) é `const`.
+
+### Detalhe de CSS: reservar espaço com `min-height`
+`#mensagem-oi { min-height: 1.4em }` evita o "pulo" do layout quando a primeira mensagem aparece. Pequena UX que importa.
+
+---
+
+## JS 4 — `classList.toggle` (botão de tema)
+
+### Conceitos
+- **`element.classList`** — coleção das classes CSS do elemento, com 3 métodos principais:
+  - `.add('x')` → adiciona
+  - `.remove('x')` → remove
+  - `.toggle('x')` → liga/desliga. **Forma com 2º argumento:** `.toggle('x', condicao)` força o estado.
+- **`.contains('x')`** → retorna `true` ou `false`.
+- **`if`/`else`** — controle de fluxo:
+  ```js
+  if (condicao) {
+      // verdadeiro
+  } else {
+      // falso
+  }
+  ```
+- **`===`** — igualdade **estrita** (compara valor E tipo). **Sempre use `===` em vez de `==`** em JS moderno.
+- **`position: fixed`** (CSS) — gruda o elemento em coordenadas da janela do navegador. `z-index` controla sobreposição.
+
+### Estratégia de tema escolhida (A): toggle manual
+- Drop em `@media (prefers-color-scheme: dark)` — perdemos detecção automática do SO, em troca de controle total do usuário.
+- Variáveis CSS redefinidas em `body.tema-escuro` (e não em `:root`) — a herança CSS faz toda a árvore re-renderizar com cores novas.
+
+### Construção
+```html
+<button id="botao-tema" type="button">Modo escuro</button>
+```
+
+```css
+body.tema-escuro {
+    --cor-fundo: #0f172a;
+    --cor-texto: #f1f5f9;
+    --cor-texto-suave: #94a3b8;
+    --cor-card: #1e293b;
+}
+```
+
+```js
+const botaoTema = document.querySelector('#botao-tema');
+
+const aoClicarTema = () => {
+    document.body.classList.toggle('tema-escuro');
+
+    if (document.body.classList.contains('tema-escuro')) {
+        botaoTema.textContent = 'Modo claro';
+    } else {
+        botaoTema.textContent = 'Modo escuro';
+    }
+};
+
+botaoTema.addEventListener('click', aoClicarTema);
+```
+
+### Princípio: CSS define, JS alterna
+JavaScript **não toca em nenhuma cor**. Só põe ou tira a classe. O CSS faz o trabalho visual inteiro. Essa separação é o que torna temas (e qualquer estado visual) sustentáveis em projetos grandes.
+
+### UX do texto do botão
+Botão deve mostrar **para onde vai te levar**, não onde você está. Estamos no escuro? O botão diz "Modo claro" (para onde o clique te leva).
+
+---
+
+## JS 5 — `localStorage` (tema persistente)
+
+### Conceitos
+- **`localStorage`** — armazenamento chave→valor do navegador. **Persiste para sempre**, é **por site**, **síncrono**.
+- **Métodos essenciais:**
+  - `localStorage.setItem('chave', 'valor')` — guarda
+  - `localStorage.getItem('chave')` — lê (string ou `null`)
+  - `localStorage.removeItem('chave')` — apaga
+- **Pegadinha:** só guarda **strings**. Para objetos/arrays use `JSON.stringify` na ida e `JSON.parse` na volta.
+
+### Construção
+```js
+const botaoTema = document.querySelector('#botao-tema');
+
+// 1) Ao carregar: lê o tema salvo e aplica.
+const temaSalvo = localStorage.getItem('tema');
+if (temaSalvo === 'escuro') {
+    document.body.classList.add('tema-escuro');
+    botaoTema.textContent = 'Modo claro';
+}
+
+// 2) Ao clicar: alterna e salva.
+const aoClicarTema = () => {
+    document.body.classList.toggle('tema-escuro');
+
+    if (document.body.classList.contains('tema-escuro')) {
+        botaoTema.textContent = 'Modo claro';
+        localStorage.setItem('tema', 'escuro');
+    } else {
+        botaoTema.textContent = 'Modo escuro';
+        localStorage.setItem('tema', 'claro');
+    }
+};
+
+botaoTema.addEventListener('click', aoClicarTema);
+```
+
+### FOUC (Flash of Unstyled Content)
+Como `<script defer>` roda **depois** do HTML ser renderizado, há uma fração de segundo de tema "errado" antes do JS aplicar. Solução clássica: script inline no `<head>` que aplica a classe antes do `<body>` ser desenhado. Trade-off (perde a separação JS/HTML) → fica de TODO.
+
+### Inspecionar `localStorage`
+F12 → aba **Application** → **Local Storage** → domínio do site. Vê todas as chaves; pode editar valores manualmente para testar.
+
+---
+
+## JS 6 — Arrays + `filter` + `input` (busca em tempo real)
+
+### Conceitos
+- **Array** — lista ordenada de valores. Acesso por índice (`arr[0]`), `arr.length`.
+- **`.filter(funcao)`** — retorna um **array novo** só com os itens onde a função retorna `true`. Não modifica o original.
+- **`.forEach(funcao)`** — roda a função para cada item. Usada quando você **faz algo com cada um**, não quando precisa de um subconjunto.
+- **`.includes(substring)`** — em strings, pergunta se contém. Em arrays, idem.
+- **`.toLowerCase()`** + **`.trim()`** — normalização: insensível a maiúsculas e a espaços nas pontas.
+- **Evento `'input'`** — dispara **a cada tecla** num campo. Diferente de `'change'` (só quando o campo perde o foco).
+- **`input.value`** — em campos de formulário, `.value` é o equivalente de `.textContent`.
+- **`Array.from(nodeList)`** — converte `NodeList` em array de verdade (para usar `.filter`, `.map` etc.). Equivalente: `[...nodeList]`.
+
+### Construção
+```html
+<input type="search" id="busca-projetos" placeholder="Buscar projeto...">
+```
+
+```css
+.escondido { display: none; }
+```
+
+```js
+const inputBusca = document.querySelector('#busca-projetos');
+
+const aoDigitar = () => {
+    const termo = inputBusca.value.toLowerCase().trim();
+
+    cards.forEach(card => {
+        const titulo = card.querySelector('h3').textContent.toLowerCase();
+        const descricao = card.querySelector('p').textContent.toLowerCase();
+        const combina = titulo.includes(termo) || descricao.includes(termo);
+        card.classList.toggle('escondido', !combina);
+    });
+
+    const visiveis = Array.from(cards).filter(card => {
+        return !card.classList.contains('escondido');
+    });
+    tituloProjetos.textContent = `Meus projetos (${visiveis.length})`;
+};
+
+inputBusca.addEventListener('input', aoDigitar);
+```
+
+### `forEach` vs `filter`: qual usar quando
+| Precisa | Use |
+|---------|-----|
+| Fazer algo com **cada item** (efeito colateral) | `forEach` |
+| **Selecionar** um subconjunto para usar depois | `filter` |
+| Transformar cada item num valor novo | `.map` (não usado aqui ainda) |
+
+Aqui usamos os dois propositalmente: `forEach` para mexer no DOM de cada card, `filter` para contar os visíveis.
+
+### Detalhe: `querySelector` é escopado
+`card.querySelector('h3')` busca **dentro daquele card específico**. Sem o `card.` na frente, pegaria o primeiro `<h3>` da página inteira. Sempre que estiver dentro de um loop, prefira o `querySelector` escopado.
+
+---
+
+## JS 7 — Polimento, commit e deploy
+
+Costurar a parte final.
+
+### Polimento: estado vazio na busca
+Quando a busca não encontra nada, mostrar mensagem em vez de tela vazia. Aproveitamos para **refatorar** `.projeto-card.escondido` em `.escondido` (utility genérica reutilizável).
+
+```html
+<p id="sem-resultados" class="escondido">Nenhum projeto encontrado.</p>
+```
+
+```js
+const semResultados = document.querySelector('#sem-resultados');
+// ... ao final do aoDigitar():
+semResultados.classList.toggle('escondido', visiveis.length > 0);
+```
+
+### Ciclo de fechamento da parte
+1. Testar tudo localmente (cada feature da Parte 4: contador, oi, tema, persistência, busca, estado vazio).
+2. Testar em modo claro e escuro.
+3. `git add` + `git commit` multi-linha.
+4. `git push`.
+5. Aguardar Pages rebuildar.
+6. Confirmar no site público.
+
+---
+
 # Anexo A — Código final
 
 ## `index.html`
@@ -883,8 +1180,11 @@ Mais limpo que `sleep <fixo>`: rápido se finalizar antes, robusto se demorar ma
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meu Perfil</title>
     <link rel="stylesheet" href="style.css">
+    <script src="script.js" defer></script>
 </head>
 <body>
+    <button id="botao-tema" type="button">Modo escuro</button>
+
     <main>
         <section class="perfil">
             <img src="imagem.jpeg" alt="Foto de perfil de Wenceslau">
@@ -893,6 +1193,8 @@ Mais limpo que `sleep <fixo>`: rápido se finalizar antes, robusto se demorar ma
                 Desenvolvedor curioso, aprendendo HTML e CSS para construir
                 minha presença na web.
             </p>
+            <button id="botao-oi" type="button">Mandar um oi</button>
+            <p id="mensagem-oi"></p>
         </section>
 
         <section class="links">
@@ -906,6 +1208,7 @@ Mais limpo que `sleep <fixo>`: rápido se finalizar antes, robusto se demorar ma
 
         <section class="projetos">
             <h2>Meus projetos</h2>
+            <input type="search" id="busca-projetos" placeholder="Buscar projeto...">
             <div class="grid-projetos">
                 <article class="projeto-card destaque">
                     <span class="badge">Destaque</span>
@@ -929,6 +1232,7 @@ Mais limpo que `sleep <fixo>`: rápido se finalizar antes, robusto se demorar ma
                     <p>Jogo de perguntas e respostas com pontuação. Foco em lógica e DOM.</p>
                 </article>
             </div>
+            <p id="sem-resultados" class="escondido">Nenhum projeto encontrado.</p>
         </section>
     </main>
 </body>
@@ -973,29 +1277,13 @@ body {
     background-color: var(--cor-fundo);
 }
 
-h1 {
-    font-size: 1.75rem;
-    font-weight: 700;
-}
+h1 { font-size: 1.75rem; font-weight: 700; }
+h2 { font-size: 1.125rem; font-weight: 600; color: var(--cor-texto-suave); }
+.bio { color: var(--cor-texto-suave); }
 
-h2 {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: var(--cor-texto-suave);
-}
+img { max-width: 100%; height: auto; display: block; }
 
-.bio {
-    color: var(--cor-texto-suave);
-}
-
-/* ---------- Imagens responsivas (regra geral) ---------- */
-img {
-    max-width: 100%;
-    height: auto;
-    display: block;
-}
-
-/* ---------- Layout: centralizar tudo na tela ---------- */
+/* ---------- Layout principal ---------- */
 body {
     min-height: 100vh;
     display: flex;
@@ -1018,33 +1306,22 @@ main {
 .links     { grid-area: links; }
 .projetos  { grid-area: projetos; }
 
-/* ---------- Card de perfil ---------- */
-.perfil {
+/* ---------- Cards ---------- */
+.perfil, .links, .projetos {
     background-color: var(--cor-card);
     padding: var(--espaco-grande);
     border-radius: 16px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-
     display: flex;
     flex-direction: column;
-    align-items: center;
     gap: var(--espaco-medio);
+}
+
+.perfil {
+    align-items: center;
     text-align: center;
 }
 
-/* ---------- Card da lista de links ---------- */
-.links {
-    background-color: var(--cor-card);
-    padding: var(--espaco-grande);
-    border-radius: 16px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-
-    display: flex;
-    flex-direction: column;
-    gap: var(--espaco-medio);
-}
-
-/* ---------- Links como botões ---------- */
 .links ul {
     list-style: none;
     display: flex;
@@ -1062,12 +1339,8 @@ main {
     text-decoration: none;
     text-align: center;
     font-weight: 600;
-
-    transition: background-color 0.15s ease,
-                border-color 0.15s ease,
-                color 0.15s ease,
-                transform 0.15s ease,
-                box-shadow 0.15s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease,
+                color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .links a:hover {
@@ -1083,7 +1356,6 @@ main {
     outline-offset: 2px;
 }
 
-/* ---------- Foto de perfil circular ---------- */
 .perfil img {
     width: 140px;
     aspect-ratio: 1 / 1;
@@ -1093,16 +1365,87 @@ main {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-/* ---------- Seção de projetos (card externo) ---------- */
-.projetos {
-    background-color: var(--cor-card);
-    padding: var(--espaco-grande);
-    border-radius: 16px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+/* ---------- Botão "Mandar um oi" ---------- */
+.perfil button {
+    padding: 0.5rem 1.25rem;
+    background-color: var(--cor-destaque);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
 
-    display: flex;
-    flex-direction: column;
-    gap: var(--espaco-medio);
+.perfil button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+
+#mensagem-oi {
+    color: var(--cor-texto-suave);
+    font-size: 0.9rem;
+    min-height: 1.4em;
+}
+
+/* ---------- Botão de tema (fixo, canto superior direito) ---------- */
+#botao-tema {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 10;
+    padding: 0.5rem 0.875rem;
+    background-color: var(--cor-card);
+    color: var(--cor-texto);
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+#botao-tema:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* ---------- Campo de busca de projetos ---------- */
+#busca-projetos {
+    width: 100%;
+    padding: 0.625rem var(--espaco-medio);
+    background-color: var(--cor-fundo);
+    color: var(--cor-texto);
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#busca-projetos:focus {
+    outline: none;
+    border-color: var(--cor-destaque);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+body.tema-escuro #busca-projetos {
+    border-color: #334155;
+}
+
+/* Classe utilitária — JS adiciona para esconder qualquer elemento. */
+.escondido { display: none; }
+
+#sem-resultados {
+    text-align: center;
+    color: var(--cor-texto-suave);
+    font-size: 0.9rem;
+    padding: var(--espaco-medio) 0;
+    font-style: italic;
 }
 
 /* ---------- Grid de cards de projeto ---------- */
@@ -1118,9 +1461,7 @@ main {
     background-color: var(--cor-fundo);
     border: 1px solid #e5e7eb;
     border-radius: 10px;
-
-    transition: transform 0.15s ease,
-                box-shadow 0.15s ease,
+    transition: transform 0.15s ease, box-shadow 0.15s ease,
                 border-color 0.15s ease;
 }
 
@@ -1130,18 +1471,9 @@ main {
     box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
 }
 
-.projeto-card h3 {
-    font-size: 1rem;
-    font-weight: 600;
-    margin-bottom: var(--espaco-pequeno);
-}
+.projeto-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: var(--espaco-pequeno); }
+.projeto-card p  { font-size: 0.875rem; color: var(--cor-texto-suave); }
 
-.projeto-card p {
-    font-size: 0.875rem;
-    color: var(--cor-texto-suave);
-}
-
-/* ---------- Card destaque (ocupa 2 colunas quando há espaço) ---------- */
 .projeto-card.destaque {
     grid-column: span 2;
     background-color: var(--cor-card);
@@ -1173,32 +1505,87 @@ main {
             "projetos projetos";
     }
 
-    .perfil {
-        justify-content: center;
-    }
-
-    .perfil img {
-        width: 160px;
-    }
-
-    h1 {
-        font-size: 2rem;
-    }
+    .perfil img { width: 160px; }
+    h1 { font-size: 2rem; }
 }
 
-/* ---------- DARK MODE ---------- */
-@media (prefers-color-scheme: dark) {
-    :root {
-        --cor-fundo: #0f172a;
-        --cor-texto: #f1f5f9;
-        --cor-texto-suave: #94a3b8;
-        --cor-card: #1e293b;
-    }
-
-    .links a {
-        border-color: #334155;
-    }
+/* ---------- DARK MODE (controlado pela classe via JS) ---------- */
+body.tema-escuro {
+    --cor-fundo: #0f172a;
+    --cor-texto: #f1f5f9;
+    --cor-texto-suave: #94a3b8;
+    --cor-card: #1e293b;
 }
+
+body.tema-escuro .links a    { border-color: #334155; }
+body.tema-escuro #botao-tema { border-color: #334155; }
+```
+
+## `script.js`
+
+```js
+// ---------- Contador automático de projetos ----------
+const cards = document.querySelectorAll('.projeto-card');
+const tituloProjetos = document.querySelector('.projetos h2');
+tituloProjetos.textContent = `Meus projetos (${cards.length})`;
+
+// ---------- Botão "Mandar um oi" ----------
+const botaoOi = document.querySelector('#botao-oi');
+const mensagemOi = document.querySelector('#mensagem-oi');
+let contagemOis = 0;
+
+const aoClicarOi = () => {
+    contagemOis = contagemOis + 1;
+    mensagemOi.textContent = `Oi recebido! Você já mandou ${contagemOis}.`;
+};
+
+botaoOi.addEventListener('click', aoClicarOi);
+
+// ---------- Botão de tema (claro/escuro) ----------
+const botaoTema = document.querySelector('#botao-tema');
+
+const temaSalvo = localStorage.getItem('tema');
+if (temaSalvo === 'escuro') {
+    document.body.classList.add('tema-escuro');
+    botaoTema.textContent = 'Modo claro';
+}
+
+const aoClicarTema = () => {
+    document.body.classList.toggle('tema-escuro');
+
+    if (document.body.classList.contains('tema-escuro')) {
+        botaoTema.textContent = 'Modo claro';
+        localStorage.setItem('tema', 'escuro');
+    } else {
+        botaoTema.textContent = 'Modo escuro';
+        localStorage.setItem('tema', 'claro');
+    }
+};
+
+botaoTema.addEventListener('click', aoClicarTema);
+
+// ---------- Busca de projetos em tempo real ----------
+const inputBusca = document.querySelector('#busca-projetos');
+const semResultados = document.querySelector('#sem-resultados');
+
+const aoDigitar = () => {
+    const termo = inputBusca.value.toLowerCase().trim();
+
+    cards.forEach(card => {
+        const titulo = card.querySelector('h3').textContent.toLowerCase();
+        const descricao = card.querySelector('p').textContent.toLowerCase();
+        const combina = titulo.includes(termo) || descricao.includes(termo);
+        card.classList.toggle('escondido', !combina);
+    });
+
+    const visiveis = Array.from(cards).filter(card => {
+        return !card.classList.contains('escondido');
+    });
+    tituloProjetos.textContent = `Meus projetos (${visiveis.length})`;
+    semResultados.classList.toggle('escondido', visiveis.length > 0);
+};
+
+inputBusca.addEventListener('input', aoDigitar);
 ```
 
 ---
@@ -1287,6 +1674,78 @@ main {
 | `:focus-visible` | Foco visível em navegação por teclado |
 | `transition` | Anima a mudança entre estados |
 | `transform` | Propriedade performática (GPU) para mover/escalar |
+| `position: fixed` | Gruda o elemento em coordenadas da janela do navegador |
+| `z-index` | Controla sobreposição entre elementos posicionados (maior = na frente) |
+
+## JavaScript — fundamentos
+
+| Termo | Definição |
+|-------|-----------|
+| `<script defer>` | Atributo que faz o JS rodar **após** o HTML ser parseado |
+| `console.log(...)` | Imprime no DevTools Console; ferramenta primária de debug |
+| `const` | Vínculo nome→valor imutável. **Default da comunidade** |
+| `let` | Variável reatribuível. Use só quando precisa |
+| Tipos primitivos | string, number, boolean (e null, undefined) |
+| Template literal | `` `texto ${var} texto` `` — interpolação com crases |
+| `===` | Igualdade estrita (valor E tipo). **Sempre prefira** a `==` |
+| Arrow function | `(args) => { ... }` ou `(args) => expressao` |
+| `if`/`else` | Controle de fluxo condicional |
+
+## JavaScript — DOM
+
+| Termo | Definição |
+|-------|-----------|
+| DOM | Árvore de objetos JS que representa o HTML |
+| `document` | Objeto global, raiz do DOM |
+| `querySelector(seletor)` | Primeiro elemento que casa (ou `null`) |
+| `querySelectorAll(seletor)` | NodeList com todos que casam (tem `.length`, `forEach`) |
+| `.textContent` | Lê/escreve o **texto** de um elemento |
+| `.value` | Lê/escreve o valor de inputs/textareas |
+| `element.querySelector(...)` | Idem, mas restrito ao escopo do elemento |
+| `classList.add('x')` | Adiciona a classe |
+| `classList.remove('x')` | Remove a classe |
+| `classList.toggle('x')` | Liga/desliga; com 2º arg booleano força o estado |
+| `classList.contains('x')` | Retorna `true`/`false` |
+
+## JavaScript — eventos e funções
+
+| Termo | Definição |
+|-------|-----------|
+| `addEventListener('evento', fn)` | Liga uma função à ocorrência do evento |
+| Evento `'click'` | Disparado em clique do mouse / tap |
+| Evento `'input'` | Disparado **a cada tecla** num campo de texto |
+| Evento `'change'` | Disparado quando o campo **perde foco** após mudar |
+| Função sem `()` | Passar como referência (handler) |
+| Função com `()` | **Executar agora** |
+| Escopo léxico | Variáveis fora da função permanecem acessíveis dentro |
+
+## JavaScript — arrays e strings
+
+| Termo | Definição |
+|-------|-----------|
+| Array | Lista ordenada (`[1, 2, 3]`), acessada por índice (`arr[0]`) |
+| `.length` | Quantidade de itens |
+| `.forEach(fn)` | Roda fn para cada item. Use para **efeitos colaterais** |
+| `.filter(fn)` | Retorna array novo só com itens onde fn dá `true` |
+| `.map(fn)` | Retorna array novo com cada item **transformado** por fn |
+| `Array.from(nodeList)` | Converte NodeList em array de verdade |
+| `[...nodeList]` | Equivalente moderno via spread |
+| `.includes(x)` | Em string ou array: contém? |
+| `.toLowerCase()` | String em minúsculas |
+| `.trim()` | Remove espaços nas pontas |
+
+## JavaScript — armazenamento
+
+| Termo | Definição |
+|-------|-----------|
+| `localStorage.setItem('k', 'v')` | Salva (só strings, sobrescreve) |
+| `localStorage.getItem('k')` | Lê (string ou `null`) |
+| `localStorage.removeItem('k')` | Apaga uma chave |
+| `localStorage.clear()` | Apaga todas as chaves do site |
+| `JSON.stringify(obj)` | Converte objeto/array em string para salvar |
+| `JSON.parse(str)` | Volta de string para objeto/array |
+| Per-origin | Cada domínio tem sua própria gavetinha isolada |
+| FOUC | "Flash of Unstyled Content" — instante de tema "errado" antes do JS aplicar |
 
 ## Git
 
@@ -1388,24 +1847,31 @@ xdg-open ~/projetos/perfil-web/index.html
 
 | Tópico | O que ganha |
 |--------|-------------|
-| **CSS Grid** | Layouts em 2D (linhas + colunas simultâneas). Próximo passo natural depois do Flexbox |
 | **CSS clamp(), min(), max()** | Tipografia fluida sem precisar de tantas media queries |
 | **Container queries** | Adapta layout pelo tamanho do container, não da viewport |
 | **CSS animations (`@keyframes`)** | Animações elaboradas além de `transition` |
 | **Acessibilidade ARIA** | Atributos extras para leitores de tela em UI complexa |
-| **JavaScript** | Interatividade (forms, scroll animations, fetch de API) |
+| **JS: `fetch` + `async`/`await`** | Buscar dados de APIs externas em tempo de execução |
+| **JS: `.map`, `.reduce`** | Transformações de array além de `filter`/`forEach` |
+| **JS: módulos (`import`/`export`)** | Dividir código em múltiplos arquivos |
+| **JS: tratamento de erro (`try`/`catch`)** | Robustez ao lidar com APIs e parsing |
+| **TypeScript** | JavaScript com tipos verificados em tempo de desenvolvimento |
 
 ## Recursos recomendados
 
-- **MDN Web Docs** (https://developer.mozilla.org/) — referência canônica de HTML/CSS
+- **MDN Web Docs** (https://developer.mozilla.org/) — referência canônica de HTML/CSS/JS
 - **Flexbox Froggy** (https://flexboxfroggy.com/) — jogo para fixar Flexbox
 - **Grid Garden** (https://cssgridgarden.com/) — mesmo conceito para CSS Grid
-- **Can I Use** (https://caniuse.com/) — checa compatibilidade de features CSS
+- **Can I Use** (https://caniuse.com/) — checa compatibilidade de features CSS/JS
+- **JavaScript.info** (https://javascript.info/) — curso aberto, profundo, em pt-BR disponível
+- **You Don't Know JS** (https://github.com/getify/You-Dont-Know-JS) — série gratuita sobre fundamentos
 
 ## Possíveis evoluções da página
 
 - **Domínio próprio:** R$ 40/ano em registro.br por `.com.br`, aponta para GitHub Pages
-- **Adicionar projetos:** seção de cards listando seus repos do GitHub
-- **Botão de tema:** toggle manual de light/dark (precisa JavaScript + localStorage)
+- **Adicionar projetos reais:** consumir API do GitHub via `fetch` para listar repos automaticamente
+- **Tema tri-estado:** claro / escuro / automático (segue SO) com 3 estados no botão
+- **Eliminar FOUC:** script inline no `<head>` que aplica `tema-escuro` antes do `<body>` renderizar
 - **Formulário de contato:** com serviços como Formspree (sem backend)
 - **Análise:** GoatCounter ou Plausible (privacy-friendly, sem cookies)
+- **PWA:** transformar em app instalável (manifest + service worker)

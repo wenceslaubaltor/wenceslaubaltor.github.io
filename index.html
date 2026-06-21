@@ -5,8 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meu Perfil</title>
     <link rel="stylesheet" href="style.css">
+    <script src="script.js" defer></script>
 </head>
 <body>
+    <button id="botao-tema" type="button">Modo escuro</button>
+
     <main>
         <section class="perfil">
             <img src="imagem.jpeg" alt="Foto de perfil de Wenceslau">
@@ -15,6 +18,8 @@
                 Desenvolvedor curioso, aprendendo HTML e CSS para construir
                 minha presença na web.
             </p>
+            <button id="botao-oi" type="button">Mandar um oi</button>
+            <p id="mensagem-oi"></p>
         </section>
 
         <section class="links">
@@ -28,6 +33,7 @@
 
         <section class="projetos">
             <h2>Meus projetos</h2>
+            <input type="search" id="busca-projetos" placeholder="Buscar projeto...">
             <div class="grid-projetos">
                 <article class="projeto-card destaque">
                     <span class="badge">Destaque</span>
@@ -51,6 +57,7 @@
                     <p>Jogo de perguntas e respostas com pontuação. Foco em lógica e DOM.</p>
                 </article>
             </div>
+            <p id="sem-resultados" class="escondido">Nenhum projeto encontrado.</p>
         </section>
     </main>
 </body>

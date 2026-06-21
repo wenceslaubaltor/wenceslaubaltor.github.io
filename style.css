@@ -153,6 +153,60 @@ main {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
+/* ---------- Botão "Mandar um oi" ---------- */
+.perfil button {
+    padding: 0.5rem 1.25rem;
+    background-color: var(--cor-destaque);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+
+    transition: transform 0.15s ease,
+                box-shadow 0.15s ease;
+}
+
+.perfil button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+
+#mensagem-oi {
+    color: var(--cor-texto-suave);
+    font-size: 0.9rem;
+    min-height: 1.4em;
+}
+
+/* ---------- Botão de tema (canto superior direito, fixo) ---------- */
+#botao-tema {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 10;
+
+    padding: 0.5rem 0.875rem;
+    background-color: var(--cor-card);
+    color: var(--cor-texto);
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+
+    transition: transform 0.15s ease,
+                box-shadow 0.15s ease;
+}
+
+#botao-tema:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
 /* ---------- Seção de projetos (card externo) ---------- */
 .projetos {
     background-color: var(--cor-card);
@@ -163,6 +217,44 @@ main {
     display: flex;
     flex-direction: column;
     gap: var(--espaco-medio);
+}
+
+/* ---------- Campo de busca de projetos ---------- */
+#busca-projetos {
+    width: 100%;
+    padding: 0.625rem var(--espaco-medio);
+    background-color: var(--cor-fundo);
+    color: var(--cor-texto);
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.9rem;
+
+    transition: border-color 0.15s ease,
+                box-shadow 0.15s ease;
+}
+
+#busca-projetos:focus {
+    outline: none;
+    border-color: var(--cor-destaque);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+body.tema-escuro #busca-projetos {
+    border-color: #334155;
+}
+
+/* Classe utilitária usada pelo JavaScript para esconder qualquer elemento. */
+.escondido {
+    display: none;
+}
+
+#sem-resultados {
+    text-align: center;
+    color: var(--cor-texto-suave);
+    font-size: 0.9rem;
+    padding: var(--espaco-medio) 0;
+    font-style: italic;
 }
 
 /* ---------- Grid de cards de projeto ---------- */
@@ -249,17 +341,20 @@ main {
 }
 
 /* ============================================================
-   DARK MODE: ativa quando o SO do usuário está em modo escuro
+   DARK MODE: ativa quando o <body> tem a classe .tema-escuro
+   (controlado pelo botão via JavaScript)
    ============================================================ */
-@media (prefers-color-scheme: dark) {
-    :root {
-        --cor-fundo: #0f172a;
-        --cor-texto: #f1f5f9;
-        --cor-texto-suave: #94a3b8;
-        --cor-card: #1e293b;
-    }
+body.tema-escuro {
+    --cor-fundo: #0f172a;
+    --cor-texto: #f1f5f9;
+    --cor-texto-suave: #94a3b8;
+    --cor-card: #1e293b;
+}
 
-    .links a {
-        border-color: #334155;
-    }
+body.tema-escuro .links a {
+    border-color: #334155;
+}
+
+body.tema-escuro #botao-tema {
+    border-color: #334155;
 }
