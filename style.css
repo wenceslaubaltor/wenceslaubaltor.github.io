@@ -66,10 +66,17 @@ body {
 main {
     width: 100%;
     max-width: 420px;
-    display: flex;
-    flex-direction: column;
+    display: grid;
     gap: var(--espaco-grande);
+    grid-template-areas:
+        "perfil"
+        "links"
+        "projetos";
 }
+
+.perfil    { grid-area: perfil; }
+.links     { grid-area: links; }
+.projetos  { grid-area: projetos; }
 
 /* ---------- Card de perfil ---------- */
 .perfil {
@@ -146,19 +153,86 @@ main {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
+/* ---------- Seção de projetos (card externo) ---------- */
+.projetos {
+    background-color: var(--cor-card);
+    padding: var(--espaco-grande);
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--espaco-medio);
+}
+
+/* ---------- Grid de cards de projeto ---------- */
+.grid-projetos {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1.5rem 1rem;
+    grid-auto-rows: minmax(120px, auto);
+}
+
+.projeto-card {
+    padding: var(--espaco-medio);
+    background-color: var(--cor-fundo);
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+
+    transition: transform 0.15s ease,
+                box-shadow 0.15s ease,
+                border-color 0.15s ease;
+}
+
+.projeto-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--cor-destaque);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+}
+
+.projeto-card h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: var(--espaco-pequeno);
+}
+
+.projeto-card p {
+    font-size: 0.875rem;
+    color: var(--cor-texto-suave);
+}
+
+/* ---------- Card destaque (ocupa 2 colunas quando há espaço) ---------- */
+.projeto-card.destaque {
+    grid-column: span 2;
+    background-color: var(--cor-card);
+    border-color: var(--cor-destaque);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+}
+
+.badge {
+    display: inline-block;
+    align-self: flex-start;
+    padding: 0.125rem 0.5rem;
+    margin-bottom: var(--espaco-pequeno);
+    background-color: var(--cor-destaque);
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
 /* ============================================================
    DESKTOP: a partir de 768px de largura, layout em duas colunas
    ============================================================ */
 @media (min-width: 768px) {
     main {
         max-width: 760px;
-        flex-direction: row;
-        align-items: stretch;
-    }
-
-    .perfil,
-    .links {
-        flex: 1;
+        grid-template-columns: 1fr 1fr;
+        grid-template-areas:
+            "perfil   links"
+            "projetos projetos";
     }
 
     .perfil {
