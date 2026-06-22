@@ -41,6 +41,14 @@ Documento de referência do tutorial completo, desde a estrutura HTML até o dep
   - [JS 5: localStorage (tema persistente)](#js-5--localstorage-tema-persistente)
   - [JS 6: Arrays + filter + input (busca em tempo real)](#js-6--arrays--filter--input-busca-em-tempo-real)
   - [JS 7: Polimento, commit e deploy](#js-7--polimento-commit-e-deploy)
+- [Parte 5 — `fetch` + GitHub API (repos dinâmicos)](#parte-5--fetch--github-api-repos-dinâmicos)
+  - [API 1: fetch + Promise + .then](#api-1--fetch--promise--then)
+  - [API 2: async/await + try/catch + response.ok](#api-2--asyncawait--trycatch--responseok)
+  - [API 3: .map + innerHTML + nova grid-area](#api-3--map--innerhtml--nova-grid-area)
+  - [API 4: Estados de UI (loading visível + erro na tela)](#api-4--estados-de-ui-loading-visível--erro-na-tela)
+  - [API 5: .filter + .sort + .slice (pipeline de curadoria)](#api-5--filter--sort--slice-pipeline-de-curadoria)
+  - [API 6: Refinos visuais (line-clamp, dourado, data relativa)](#api-6--refinos-visuais-line-clamp-dourado-data-relativa)
+  - [API 7: Polimento, commit e deploy](#api-7--polimento-commit-e-deploy)
 - [Anexo A — Código final](#anexo-a--código-final)
 - [Anexo B — Glossário de conceitos](#anexo-b--glossário-de-conceitos)
 - [Anexo C — Comandos úteis](#anexo-c--comandos-úteis)
@@ -1168,6 +1176,353 @@ semResultados.classList.toggle('escondido', visiveis.length > 0);
 
 ---
 
+# Parte 5 — `fetch` + GitHub API (repos dinâmicos)
+
+Até aqui o site era 100% estático: cards fictícios escritos à mão no HTML. Agora vamos **buscar dados em tempo de execução** da API pública do GitHub e renderizar uma nova seção "Repos do GitHub" abaixo dos fictícios. Conceitos centrais: `fetch`, Promises, `async`/`await`, tratamento de erro, transformação de array (`filter` + `sort` + `slice` + `map`) e estados de UI (loading, error, success).
+
+**Decisão de escopo:** os cards fictícios continuam (vitrine de "projetos planejados"). A nova seção mostra repos reais. A coexistência ensina o padrão real de "dados estáticos + dinâmicos no mesmo layout".
+
+## API 1 — `fetch` + Promise + `.then`
+
+`fetch(url)` faz uma requisição HTTP e retorna **uma Promise** — uma "promessa" de que algum dia vai chegar uma resposta. Você não tem o valor imediatamente; tem um objeto que representa o trabalho em andamento.
+
+```js
+const URL_REPOS = 'https://api.github.com/users/wenceslaubaltor/repos';
+
+fetch(URL_REPOS)
+    .then(resposta => resposta.json())  // 1º .then: extrai o corpo como JSON
+    .then(repos => console.log(repos)); // 2º .then: o array de repos parseado
+```
+
+**O que cada `.then` faz:** registra uma função que vai rodar **quando a Promise anterior resolver**. O retorno de um `.then` vira a entrada do próximo — assim você encadeia transformações.
+
+**Por que dois `.then`?** `fetch` resolve para um objeto `Response` (com headers, status, métodos). Pra obter o **corpo** parseado como JSON, você chama `resposta.json()` — que também é assíncrono (retorna outra Promise).
+
+**Endpoint usado:** `https://api.github.com/users/<usuário>/repos` — público, sem autenticação. **Limite:** 60 requisições por hora por IP sem auth.
+
+## API 2 — `async`/`await` + `try`/`catch` + `response.ok`
+
+`.then` encadeado vira bagunça rapidamente. A sintaxe moderna é `async`/`await`:
+
+```js
+const carregarRepos = async () => {
+    try {
+        const resposta = await fetch(URL_REPOS);
+        if (!resposta.ok) {
+            throw new Error(`HTTP ${resposta.status} ao buscar repos`);
+        }
+        const repos = await resposta.json();
+        console.log(repos);
+    } catch (erro) {
+        console.error('Falha ao buscar repos:', erro);
+    }
+};
+
+carregarRepos();
+```
+
+**`async`**: marca a função como assíncrona. Toda função `async` **devolve uma Promise** automaticamente.
+
+**`await`**: só funciona dentro de `async`. Pausa a função até a Promise resolver e devolve o valor desempacotado. Visualmente, código assíncrono fica linear como se fosse síncrono.
+
+**`try`/`catch`**: bloco de tratamento de erro. Se algo dentro do `try` lançar uma exceção (rede caiu, JSON inválido, `throw` manual), o controle pula pro `catch`.
+
+### ⚠️ Pegadinha clássica do `fetch`
+
+`fetch` **só rejeita em falha de rede** (sem internet, DNS, CORS). HTTP 404, 500, 403 são considerados "sucesso da requisição com status de erro" — a Promise resolve normalmente. Por isso você **precisa checar `resposta.ok`** (`true` se status é 2xx) e lançar manualmente:
+
+```js
+if (!resposta.ok) {
+    throw new Error(`HTTP ${resposta.status}`);
+}
+```
+
+Sem essa checagem, um 404 passaria silenciosamente e você tentaria fazer `.json()` numa resposta de erro, gerando um bug confuso.
+
+## API 3 — `.map` + `innerHTML` + nova `grid-area`
+
+Renderizar os repos como cards. Decisão: **reusar `.projeto-card` e `.grid-projetos`** — zero CSS novo pra layout. Só adicionar a nova área no grid principal.
+
+**HTML — nova seção abaixo das outras:**
+
+```html
+<section class="repos">
+    <h2>Repos do GitHub</h2>
+    <div id="lista-repos" class="grid-projetos">
+        <p>Carregando…</p>
+    </div>
+</section>
+```
+
+**CSS — adicionar `repos` ao grid-template-areas (mobile e desktop):**
+
+```css
+main {
+    grid-template-areas:
+        "perfil"
+        "links"
+        "projetos"
+        "repos";
+}
+
+.repos { grid-area: repos; }
+
+@media (min-width: 768px) {
+    main {
+        grid-template-areas:
+            "perfil   links"
+            "projetos projetos"
+            "repos    repos";
+    }
+}
+```
+
+**JS — função que converte um repo em HTML, renderização com `.map`:**
+
+```js
+const listaRepos = document.querySelector('#lista-repos');
+
+const repoParaCard = (repo) => {
+    const descricao = repo.description || 'Sem descrição.';
+    const linguagem = repo.language || '—';
+    return `
+        <article class="projeto-card">
+            <h3><a href="${repo.html_url}" target="_blank" rel="noopener">${repo.name}</a></h3>
+            <p>${descricao}</p>
+            <div class="meta">${linguagem} • ★ ${repo.stargazers_count}</div>
+        </article>
+    `;
+};
+
+// Dentro do try, após obter `repos`:
+listaRepos.innerHTML = repos.map(repoParaCard).join('');
+```
+
+**Conceitos:**
+- **`.map(fn)`**: transforma cada item, retorna **novo array** com o resultado. Aqui: array de objetos `repo` → array de strings de HTML.
+- **`.join('')`**: array de strings vira **uma única string**. Sem o `''`, ele juntaria com vírgula entre os pedaços.
+- **`innerHTML`**: lê/escreve o HTML interno como string. ⚠️ Se a string vier de **input de usuário não confiável**, é vetor de XSS. Aqui o conteúdo vem da API do GitHub (que valida nomes de repo), então é seguro.
+- **`target="_blank" rel="noopener"`**: abre em nova aba **sem dar à nova janela acesso ao `window.opener`** da sua página. Padrão de segurança recomendado.
+- **Fallback `||`**: `repo.description || 'Sem descrição.'` — se `description` for `null`/`undefined`/`''`, usa o texto padrão.
+
+## API 4 — Estados de UI (loading visível + erro na tela)
+
+Toda interface que busca dados de fora tem **três estados**: `loading`, `error`, `success`. Até a Etapa 3 só tratamos o sucesso decentemente. Vamos cobrir loading com **skeleton screens** e erro com **mensagem na tela** (não só `console.error`).
+
+**HTML — substituir `Carregando…` por 3 skeletons:**
+
+```html
+<div id="lista-repos" class="grid-projetos">
+    <div class="repo-skeleton"></div>
+    <div class="repo-skeleton"></div>
+    <div class="repo-skeleton"></div>
+</div>
+```
+
+**CSS — skeleton animado + bloco de erro:**
+
+```css
+.repo-skeleton {
+    min-height: 110px;
+    border-radius: 10px;
+    background: linear-gradient(
+        90deg,
+        #e5e7eb 25%,
+        #f4f4f5 50%,
+        #e5e7eb 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.repo-erro {
+    grid-column: 1 / -1;
+    padding: var(--espaco-medio);
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    color: #991b1b;
+}
+```
+
+**JS — no `catch`, mostrar mensagem visível:**
+
+```js
+} catch (erro) {
+    console.error('Falha ao buscar repos:', erro);
+    listaRepos.innerHTML = `
+        <div class="repo-erro">
+            <strong>Não foi possível carregar os repos.</strong>
+            ${erro.message}
+        </div>
+    `;
+}
+```
+
+**Conceitos novos:**
+- **Skeleton screens**: padrão moderno de loading (GitHub, LinkedIn, YouTube usam). Placeholders no formato do conteúdo final, com pulso animado. Comunica "vem coisa" sem spinners genéricos.
+- **`@keyframes`**: declara animação com estados em pontos do tempo (de `0%` a `100%`). Ativa com a propriedade `animation` no elemento.
+- **Truque do shimmer**: `linear-gradient` com `background-size: 200%` + animar `background-position`. A faixa "desliza" criando ilusão de onda passando.
+- **`grid-column: 1 / -1`**: item ocupa **todas as colunas** do grid (da primeira à última). Útil pra erro/mensagem que deve ocupar a largura inteira.
+- **Substituição automática dos skeletons**: ao escrever `listaRepos.innerHTML = ...` (no sucesso) ou no catch, o conteúdo anterior é **sobrescrito**. Os skeletons somem sozinhos.
+
+## API 5 — `.filter` + `.sort` + `.slice` (pipeline de curadoria)
+
+Mostrar todos os repos crus polui a vitrine. Vamos curar: **excluir forks**, **ordenar por atualização recente**, **limitar a top N**.
+
+```js
+const LIMITE_REPOS = 6;
+
+const visiveis = repos
+    .filter(repo => !repo.fork)
+    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+    .slice(0, LIMITE_REPOS);
+
+if (visiveis.length === 0) {
+    listaRepos.innerHTML = `<p class="repo-vazio">Nenhum repo público para mostrar ainda.</p>`;
+    return;
+}
+
+listaRepos.innerHTML = visiveis.map(repoParaCard).join('');
+```
+
+**Conceitos:**
+- **`.filter(fn)`**: já vimos com NodeList; agora em objetos da API. Retorna novo array com os itens onde `fn(item)` é `true`.
+- **`.sort((a, b) => …)`**: ordena. A função recebe `(a, b)` e devolve:
+  - negativo → `a` vem antes
+  - positivo → `b` vem antes
+  - zero → mantém ordem
+  - Datas: `new Date(str) - new Date(str)` vira diferença em ms (subtração de `Date` converte pra timestamp automaticamente).
+- **`.slice(início, fim)`**: pega fatia sem mutar o original. `.slice(0, 6)` pega os 6 primeiros — se houver menos, devolve todos sem erro.
+- **`.sort` muta o original**, mas como vem depois de `.filter` (que cria array novo), a mutação ocorre num intermediário — seguro.
+- **Encadeamento**: cada método retorna array → você lê o pipeline de cima pra baixo como uma esteira de transformações.
+- **Early return**: se nenhum repo sobrar, exibe estado vazio e sai com `return` — evita aninhar o resto em `else`.
+
+## API 6 — Refinos visuais (line-clamp, dourado, data relativa)
+
+Três pontos rústicos a polir.
+
+### 1) Descrição cortada após 2 linhas com `…`
+
+Se a descrição for longa, o card "estica" e quebra o alinhamento da grid. Corte com `-webkit-line-clamp`:
+
+```css
+.projeto-card .repo-desc {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+```
+
+O combo `-webkit-box` + `-webkit-line-clamp` + `-webkit-box-orient: vertical` é a receita-padrão hoje. O prefixo é histórico (WebKit antigo), mas funciona em todos os navegadores modernos.
+
+### 2) Esconder `★ 0` quando não há estrelas
+
+Ternário em template literal:
+
+```js
+const estrelas = repo.stargazers_count > 0
+    ? `<span class="estrela">★ ${repo.stargazers_count}</span>`
+    : '';
+```
+
+Renderiza o span só quando há pelo menos uma estrela. Cor dourada via CSS:
+
+```css
+.projeto-card .meta .estrela {
+    color: #ca8a04; /* dourado discreto, OK em fundo claro e escuro */
+}
+```
+
+### 3) Data relativa ("atualizado há 3 dias") com `Intl.RelativeTimeFormat`
+
+API nativa do navegador para formatar datas relativas em qualquer idioma. Zero dependência:
+
+```js
+const formatadorRelativo = new Intl.RelativeTimeFormat('pt-BR', { numeric: 'auto' });
+
+const formatarDataRelativa = (dataISO) => {
+    const diffMs = new Date(dataISO) - new Date();
+    const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+    if (Math.abs(diffDias) < 30) return formatadorRelativo.format(diffDias, 'day');
+    if (Math.abs(diffDias) < 365) return formatadorRelativo.format(Math.round(diffDias / 30), 'month');
+    return formatadorRelativo.format(Math.round(diffDias / 365), 'year');
+};
+```
+
+- `numeric: 'auto'` ativa frases naturais: "ontem", "amanhã" em vez de "há 1 dia"/"em 1 dia".
+- Criamos o formatador **fora da função** (escopo do módulo) — instanciar é caro, fazer uma vez basta.
+- `Math.abs` deixa funcionar tanto pra passado (negativo) quanto futuro (positivo) — uniformemente.
+
+### 4) Meta em flex (para alinhar os spans com gap consistente)
+
+```css
+.projeto-card .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    align-items: center;
+    margin-top: var(--espaco-pequeno);
+    font-size: 0.75rem;
+    color: var(--cor-texto-suave);
+}
+```
+
+`gap: 0.5rem 0.75rem` define **gap vertical** (entre linhas quando quebra) e **gap horizontal** (entre itens da mesma linha) separadamente.
+
+### Card final — `repoParaCard` refatorado
+
+```js
+const repoParaCard = (repo) => {
+    const descricao = repo.description || 'Sem descrição.';
+    const linguagem = repo.language || '—';
+    const dataRelativa = formatarDataRelativa(repo.updated_at);
+    const estrelas = repo.stargazers_count > 0
+        ? `<span class="estrela">★ ${repo.stargazers_count}</span>`
+        : '';
+
+    return `
+        <article class="projeto-card">
+            <h3><a href="${repo.html_url}" target="_blank" rel="noopener">${repo.name}</a></h3>
+            <p class="repo-desc">${descricao}</p>
+            <div class="meta">
+                <span>${linguagem}</span>
+                ${estrelas}
+                <span>Atualizado ${dataRelativa}</span>
+            </div>
+        </article>
+    `;
+};
+```
+
+## API 7 — Polimento, commit e deploy
+
+Mesmo ciclo de fechamento das partes anteriores.
+
+### Checagem local
+- Abrir `xdg-open ~/projetos/perfil-web/index.html`.
+- Skeleton pulsa por uma fração de segundo (use throttling **Slow 3G** no DevTools pra ver com calma).
+- Cards reais aparecem na seção "Repos do GitHub", ordenados por última atualização.
+- Estrelas só aparecem onde > 0; dourado discreto em ambos os temas.
+- "Atualizado há X dias" coerente com a ordenação.
+- Simular erro (URL inválida) → bloco vermelho aparece com a mensagem.
+- Tema escuro: skeleton, estrela, bloco de erro continuam legíveis.
+
+### Ciclo padrão
+1. `git add . && git commit -m "..."` (mensagem multi-linha).
+2. `git push`.
+3. Aguardar Pages rebuildar (~30-60s).
+4. Confirmar no site público que a seção "Repos do GitHub" carrega.
+
+---
+
 # Anexo A — Código final
 
 ## `index.html`
@@ -1234,6 +1589,15 @@ semResultados.classList.toggle('escondido', visiveis.length > 0);
             </div>
             <p id="sem-resultados" class="escondido">Nenhum projeto encontrado.</p>
         </section>
+
+        <section class="repos">
+            <h2>Repos do GitHub</h2>
+            <div id="lista-repos" class="grid-projetos">
+                <div class="repo-skeleton"></div>
+                <div class="repo-skeleton"></div>
+                <div class="repo-skeleton"></div>
+            </div>
+        </section>
     </main>
 </body>
 </html>
@@ -1299,15 +1663,17 @@ main {
     grid-template-areas:
         "perfil"
         "links"
-        "projetos";
+        "projetos"
+        "repos";
 }
 
 .perfil    { grid-area: perfil; }
 .links     { grid-area: links; }
 .projetos  { grid-area: projetos; }
+.repos     { grid-area: repos; }
 
 /* ---------- Cards ---------- */
-.perfil, .links, .projetos {
+.perfil, .links, .projetos, .repos {
     background-color: var(--cor-card);
     padding: var(--espaco-grande);
     border-radius: 16px;
@@ -1495,6 +1861,79 @@ body.tema-escuro #busca-projetos {
     letter-spacing: 0.05em;
 }
 
+/* ---------- Cards de repo: extras (link no título + descrição cortada + meta) ---------- */
+.projeto-card h3 a {
+    color: var(--cor-texto);
+    text-decoration: none;
+}
+.projeto-card h3 a:hover { color: var(--cor-destaque); }
+
+.projeto-card .repo-desc {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.projeto-card .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    align-items: center;
+    margin-top: var(--espaco-pequeno);
+    font-size: 0.75rem;
+    color: var(--cor-texto-suave);
+}
+
+.projeto-card .meta .estrela { color: #ca8a04; }
+
+/* ---------- Skeleton de carregamento ---------- */
+.repo-skeleton {
+    min-height: 110px;
+    border-radius: 10px;
+    background: linear-gradient(90deg, #e5e7eb 25%, #f4f4f5 50%, #e5e7eb 75%);
+    background-size: 200% 100%;
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+body.tema-escuro .repo-skeleton {
+    background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+    background-size: 200% 100%;
+}
+
+/* ---------- Bloco de erro (catch do fetch) ---------- */
+.repo-erro {
+    grid-column: 1 / -1;
+    padding: var(--espaco-medio);
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    color: #991b1b;
+    font-size: 0.9rem;
+}
+
+.repo-erro strong { display: block; margin-bottom: 0.25rem; }
+
+body.tema-escuro .repo-erro {
+    background-color: #450a0a;
+    border-color: #7f1d1d;
+    color: #fecaca;
+}
+
+/* ---------- Estado vazio (todos filtrados) ---------- */
+.repo-vazio {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: var(--cor-texto-suave);
+    font-style: italic;
+    padding: var(--espaco-medio) 0;
+}
+
 /* ---------- DESKTOP (≥ 768px) ---------- */
 @media (min-width: 768px) {
     main {
@@ -1502,7 +1941,8 @@ body.tema-escuro #busca-projetos {
         grid-template-columns: 1fr 1fr;
         grid-template-areas:
             "perfil   links"
-            "projetos projetos";
+            "projetos projetos"
+            "repos    repos";
     }
 
     .perfil img { width: 160px; }
@@ -1586,6 +2026,75 @@ const aoDigitar = () => {
 };
 
 inputBusca.addEventListener('input', aoDigitar);
+
+// ---------- Buscar e renderizar repos reais do GitHub ----------
+const URL_REPOS = 'https://api.github.com/users/wenceslaubaltor/repos';
+const LIMITE_REPOS = 6;
+const listaRepos = document.querySelector('#lista-repos');
+
+const formatadorRelativo = new Intl.RelativeTimeFormat('pt-BR', { numeric: 'auto' });
+
+const formatarDataRelativa = (dataISO) => {
+    const diffMs = new Date(dataISO) - new Date();
+    const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+    if (Math.abs(diffDias) < 30)  return formatadorRelativo.format(diffDias, 'day');
+    if (Math.abs(diffDias) < 365) return formatadorRelativo.format(Math.round(diffDias / 30), 'month');
+    return formatadorRelativo.format(Math.round(diffDias / 365), 'year');
+};
+
+const repoParaCard = (repo) => {
+    const descricao = repo.description || 'Sem descrição.';
+    const linguagem = repo.language || '—';
+    const dataRelativa = formatarDataRelativa(repo.updated_at);
+    const estrelas = repo.stargazers_count > 0
+        ? `<span class="estrela">★ ${repo.stargazers_count}</span>`
+        : '';
+
+    return `
+        <article class="projeto-card">
+            <h3><a href="${repo.html_url}" target="_blank" rel="noopener">${repo.name}</a></h3>
+            <p class="repo-desc">${descricao}</p>
+            <div class="meta">
+                <span>${linguagem}</span>
+                ${estrelas}
+                <span>Atualizado ${dataRelativa}</span>
+            </div>
+        </article>
+    `;
+};
+
+const carregarRepos = async () => {
+    try {
+        const resposta = await fetch(URL_REPOS);
+        if (!resposta.ok) {
+            throw new Error(`HTTP ${resposta.status} ao buscar repos`);
+        }
+        const repos = await resposta.json();
+
+        const visiveis = repos
+            .filter(repo => !repo.fork)
+            .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+            .slice(0, LIMITE_REPOS);
+
+        if (visiveis.length === 0) {
+            listaRepos.innerHTML = `<p class="repo-vazio">Nenhum repo público para mostrar ainda.</p>`;
+            return;
+        }
+
+        listaRepos.innerHTML = visiveis.map(repoParaCard).join('');
+    } catch (erro) {
+        console.error('Falha ao buscar repos:', erro);
+        listaRepos.innerHTML = `
+            <div class="repo-erro">
+                <strong>Não foi possível carregar os repos.</strong>
+                ${erro.message}
+            </div>
+        `;
+    }
+};
+
+carregarRepos();
 ```
 
 ---
@@ -1747,6 +2256,57 @@ inputBusca.addEventListener('input', aoDigitar);
 | Per-origin | Cada domínio tem sua própria gavetinha isolada |
 | FOUC | "Flash of Unstyled Content" — instante de tema "errado" antes do JS aplicar |
 
+## JavaScript — assíncrono (`fetch`, Promises, `async`/`await`)
+
+| Termo | Definição |
+|-------|-----------|
+| `fetch(url)` | Faz requisição HTTP. Retorna uma **Promise** de `Response` |
+| Promise | Objeto que representa um valor que **chegará no futuro** (resolve ou rejeita) |
+| `.then(fn)` | Registra função pra rodar quando a Promise resolver; encadeável |
+| `async function` | Marca a função como assíncrona. Sempre retorna uma Promise |
+| `await` | Dentro de `async`: pausa e devolve o valor da Promise quando resolver |
+| `try`/`catch`/`throw` | Bloco de tratamento de erro. `throw` interrompe e pula pro `catch` |
+| `response.ok` | `true` se status HTTP é 2xx. **`fetch` não rejeita em 404/500** — precisa checar |
+| `response.json()` | Parseia o corpo da resposta como JSON. Também é assíncrono |
+| `response.status` | Código HTTP numérico (200, 404, 500, …) |
+| `new Error(msg)` | Cria objeto de erro. `.message` é a string passada |
+| `target="_blank" rel="noopener"` | Abre em nova aba sem dar acesso ao `window.opener` (segurança) |
+| XSS via `innerHTML` | Vetor quando string vem de input não confiável. API do GitHub é segura |
+| Rate limit | API limita requests. GitHub: 60/hora por IP sem auth |
+
+## JavaScript — arrays (avançado)
+
+| Termo | Definição |
+|-------|-----------|
+| `.sort((a, b) => …)` | Ordena. Devolve negativo (a antes), positivo (b antes), zero (mantém) |
+| `.sort` muta o original | Único dos métodos clássicos que muta. Cuidado se quiser preservar |
+| `.slice(início, fim)` | Devolve **fatia** sem mutar; aceita índices negativos |
+| `.map(fn).join('')` | Padrão para gerar HTML em massa a partir de array de objetos |
+| Encadeamento | `arr.filter().sort().slice().map()` lê-se como esteira de transformações |
+| `new Date(str) - new Date(str)` | Diferença em ms (subtração de Date converte automaticamente) |
+
+## JavaScript — internacionalização (`Intl`)
+
+| Termo | Definição |
+|-------|-----------|
+| `Intl` | Namespace nativo do navegador para formatação consciente de idioma |
+| `Intl.RelativeTimeFormat` | Formata datas relativas ("há 3 dias", "ontem") em qualquer locale |
+| `numeric: 'auto'` | Ativa frases naturais: "ontem", "amanhã" em vez de "há 1 dia" |
+| `Intl.NumberFormat` | Formata números, moedas, percentuais por locale |
+| `Intl.DateTimeFormat` | Formata datas absolutas ("22 de junho de 2026") |
+
+## CSS — animações
+
+| Termo | Definição |
+|-------|-----------|
+| `@keyframes nome { … }` | Declara animação com estados em pontos do tempo (`0%`, `50%`, `100%`) |
+| `animation` | Aplica uma `@keyframes` ao elemento (nome, duração, timing, iteração) |
+| `infinite` | Loop infinito da animação |
+| `ease-in-out` | Curva de tempo: começa devagar, acelera, desacelera |
+| Truque do shimmer | `linear-gradient` + `background-size: 200%` + animar `background-position` |
+| `-webkit-line-clamp` | Trunca texto após N linhas com `…`. Precisa do trio `display: -webkit-box`, `-webkit-box-orient: vertical`, `overflow: hidden` |
+| `grid-column: 1 / -1` | Faz item ocupar todas as colunas do grid (da primeira à última) |
+
 ## Git
 
 | Termo | Definição |
@@ -1849,13 +2409,13 @@ xdg-open ~/projetos/perfil-web/index.html
 |--------|-------------|
 | **CSS clamp(), min(), max()** | Tipografia fluida sem precisar de tantas media queries |
 | **Container queries** | Adapta layout pelo tamanho do container, não da viewport |
-| **CSS animations (`@keyframes`)** | Animações elaboradas além de `transition` |
 | **Acessibilidade ARIA** | Atributos extras para leitores de tela em UI complexa |
-| **JS: `fetch` + `async`/`await`** | Buscar dados de APIs externas em tempo de execução |
-| **JS: `.map`, `.reduce`** | Transformações de array além de `filter`/`forEach` |
-| **JS: módulos (`import`/`export`)** | Dividir código em múltiplos arquivos |
-| **JS: tratamento de erro (`try`/`catch`)** | Robustez ao lidar com APIs e parsing |
+| **JS: `.reduce`** | Acumular valor a partir de array (somas, agrupamentos, objetos) |
+| **JS: módulos (`import`/`export`)** | Dividir `script.js` em múltiplos arquivos com responsabilidade clara |
+| **JS: Promise.all / Promise.race** | Disparar múltiplos `fetch` em paralelo e aguardar |
+| **JS: `AbortController`** | Cancelar `fetch` em andamento (útil em buscas com debounce) |
 | **TypeScript** | JavaScript com tipos verificados em tempo de desenvolvimento |
+| **Build tools (Vite/esbuild)** | Bundle, minificação e dev server quando o projeto crescer |
 
 ## Recursos recomendados
 
@@ -1869,9 +2429,11 @@ xdg-open ~/projetos/perfil-web/index.html
 ## Possíveis evoluções da página
 
 - **Domínio próprio:** R$ 40/ano em registro.br por `.com.br`, aponta para GitHub Pages
-- **Adicionar projetos reais:** consumir API do GitHub via `fetch` para listar repos automaticamente
+- **Bio dinâmica:** buscar dados de `/users/wenceslaubaltor` (avatar, bio, contagem de followers) e injetar no card de perfil
 - **Tema tri-estado:** claro / escuro / automático (segue SO) com 3 estados no botão
 - **Eliminar FOUC:** script inline no `<head>` que aplica `tema-escuro` antes do `<body>` renderizar
+- **Cache local dos repos:** salvar resposta em `localStorage` com timestamp; revalidar só após N minutos (reduz uso do rate limit)
+- **Topic filter:** botões pra filtrar repos por `topics` (tags do GitHub) no estilo das pílulas do GitHub
 - **Formulário de contato:** com serviços como Formspree (sem backend)
 - **Análise:** GoatCounter ou Plausible (privacy-friendly, sem cookies)
 - **PWA:** transformar em app instalável (manifest + service worker)

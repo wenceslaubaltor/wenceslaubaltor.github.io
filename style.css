@@ -71,12 +71,118 @@ main {
     grid-template-areas:
         "perfil"
         "links"
-        "projetos";
+        "projetos"
+        "repos";
 }
 
 .perfil    { grid-area: perfil; }
 .links     { grid-area: links; }
 .projetos  { grid-area: projetos; }
+.repos     { grid-area: repos; }
+
+.repos {
+    background-color: var(--cor-card);
+    padding: var(--espaco-grande);
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    gap: var(--espaco-medio);
+}
+
+/* Descrição cortada após 2 linhas, com "…" no final.
+   O combo display:-webkit-box + -webkit-line-clamp + -webkit-box-orient é
+   o "padrão de facto" hoje (mesmo com o prefixo histórico). */
+.projeto-card .repo-desc {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Rodapé dos cards de repo: linguagem, estrelas (opcional), data relativa.
+   Flex com gap deixa os itens espaçados e quebra em telas estreitas. */
+.projeto-card .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    align-items: center;
+    margin-top: var(--espaco-pequeno);
+    font-size: 0.75rem;
+    color: var(--cor-texto-suave);
+}
+
+.projeto-card .meta .estrela {
+    color: #ca8a04; /* dourado discreto, legível em fundo claro e escuro */
+}
+
+.projeto-card h3 a {
+    color: var(--cor-texto);
+    text-decoration: none;
+}
+
+.projeto-card h3 a:hover {
+    color: var(--cor-destaque);
+}
+
+/* ---------- Skeleton de carregamento (cards "fantasma" enquanto fetch acontece) ---------- */
+.repo-skeleton {
+    min-height: 110px;
+    border-radius: 10px;
+    background: linear-gradient(
+        90deg,
+        #e5e7eb 25%,
+        #f4f4f5 50%,
+        #e5e7eb 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+body.tema-escuro .repo-skeleton {
+    background: linear-gradient(
+        90deg,
+        #1e293b 25%,
+        #334155 50%,
+        #1e293b 75%
+    );
+    background-size: 200% 100%;
+}
+
+/* ---------- Bloco de erro (quando o fetch falha) ---------- */
+.repo-erro {
+    grid-column: 1 / -1;        /* ocupa todas as colunas do grid */
+    padding: var(--espaco-medio);
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    color: #991b1b;
+    font-size: 0.9rem;
+}
+
+.repo-erro strong {
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+body.tema-escuro .repo-erro {
+    background-color: #450a0a;
+    border-color: #7f1d1d;
+    color: #fecaca;
+}
+
+.repo-vazio {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: var(--cor-texto-suave);
+    font-style: italic;
+    padding: var(--espaco-medio) 0;
+}
 
 /* ---------- Card de perfil ---------- */
 .perfil {
@@ -324,7 +430,8 @@ body.tema-escuro #busca-projetos {
         grid-template-columns: 1fr 1fr;
         grid-template-areas:
             "perfil   links"
-            "projetos projetos";
+            "projetos projetos"
+            "repos    repos";
     }
 
     .perfil {

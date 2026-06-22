@@ -80,3 +80,91 @@ const aoDigitar = () => {
 };
 
 inputBusca.addEventListener('input', aoDigitar);
+
+// ---------- Buscar e renderizar repos reais do GitHub ----------
+const URL_REPOS = 'https://api.github.com/users/wenceslaubaltor/repos';
+const LIMITE_REPOS = 6;
+const listaRepos = document.querySelector('#lista-repos');
+
+// Formatador de datas relativas em pt-BR ("há 3 dias", "há 2 meses"…).
+// Criado uma vez só (fora da função) por performance — instanciar é caro.
+const formatadorRelativo = new Intl.RelativeTimeFormat('pt-BR', { numeric: 'auto' });
+
+// Recebe uma data ISO ("2026-06-19T14:23:00Z") e devolve "há 3 dias", etc.
+const formatarDataRelativa = (dataISO) => {
+    const diffMs = new Date(dataISO) - new Date();
+    const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+    if (Math.abs(diffDias) < 30) {
+        return formatadorRelativo.format(diffDias, 'day');
+    }
+    if (Math.abs(diffDias) < 365) {
+        return formatadorRelativo.format(Math.round(diffDias / 30), 'month');
+    }
+    return formatadorRelativo.format(Math.round(diffDias / 365), 'year');
+};
+
+// Transforma um objeto de repo (da API) em string de HTML de um card.
+const repoParaCard = (repo) => {
+    const descricao = repo.description || 'Sem descrição.';
+    const linguagem = repo.language || '—';
+    const dataRelativa = formatarDataRelativa(repo.updated_at);
+
+    // Só mostra estrelas se houver pelo menos uma — evita "★ 0" poluindo.
+    const estrelas = repo.stargazers_count > 0
+        ? `<span class="estrela">★ ${repo.stargazers_count}</span>`
+        : '';
+
+    return `
+        <article class="projeto-card">
+            <h3><a href="${repo.html_url}" target="_blank" rel="noopener">${repo.name}</a></h3>
+            <p class="repo-desc">${descricao}</p>
+            <div class="meta">
+                <span>${linguagem}</span>
+                ${estrelas}
+                <span>Atualizado ${dataRelativa}</span>
+            </div>
+        </article>
+    `;
+};
+
+const carregarRepos = async () => {
+    try {
+        const resposta = await fetch(URL_REPOS);
+        if (!resposta.ok) {
+            throw new Error(`HTTP ${resposta.status} ao buscar repos`);
+        }
+        const repos = await resposta.json();
+
+        // Pipeline de curadoria: filtra, ordena, limita.
+        const visiveis = repos
+            .filter(repo => !repo.fork)
+            .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+            .slice(0, LIMITE_REPOS);
+
+        // Caso raro mas possível: usuário só tem forks, ou nenhum repo público.
+        if (visiveis.length === 0) {
+            listaRepos.innerHTML = `
+                <p class="repo-vazio">Nenhum repo público para mostrar ainda.</p>
+            `;
+            return;
+        }
+
+        // map: cada repo vira uma string de HTML.
+        // join(''): array de strings vira string única.
+        listaRepos.innerHTML = visiveis.map(repoParaCard).join('');
+    } catch (erro) {
+        // Útil para o desenvolvedor (abre o DevTools e vê o stack).
+        console.error('Falha ao buscar repos:', erro);
+
+        // E feedback visível para o usuário no lugar dos skeletons.
+        listaRepos.innerHTML = `
+            <div class="repo-erro">
+                <strong>Não foi possível carregar os repos.</strong>
+                ${erro.message}
+            </div>
+        `;
+    }
+};
+
+carregarRepos();
