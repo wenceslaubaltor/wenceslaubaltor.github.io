@@ -49,6 +49,14 @@ Documento de referência do tutorial completo, desde a estrutura HTML até o dep
   - [API 5: .filter + .sort + .slice (pipeline de curadoria)](#api-5--filter--sort--slice-pipeline-de-curadoria)
   - [API 6: Refinos visuais (line-clamp, dourado, data relativa)](#api-6--refinos-visuais-line-clamp-dourado-data-relativa)
   - [API 7: Polimento, commit e deploy](#api-7--polimento-commit-e-deploy)
+- [Parte 6 — Bio dinâmica (segundo fetch + orquestração)](#parte-6--bio-dinâmica-segundo-fetch--orquestração)
+  - [Bio 1: Segundo endpoint + inspecionar JSON](#bio-1--segundo-endpoint--inspecionar-json)
+  - [Bio 2: Injetar name + bio (progressive enhancement)](#bio-2--injetar-name--bio-progressive-enhancement)
+  - [Bio 3: Avatar com fallback robusto](#bio-3--avatar-com-fallback-robusto)
+  - [Bio 4: Linha de stats clicáveis (Intl.NumberFormat)](#bio-4--linha-de-stats-clicáveis-intlnumberformat)
+  - [Bio 5: Promise.all (orquestração explícita)](#bio-5--promiseall-orquestração-explícita)
+  - [Bio 6: Promise.allSettled (falhas independentes)](#bio-6--promiseallsettled-falhas-independentes)
+  - [Bio 7: Polimento, commit e deploy](#bio-7--polimento-commit-e-deploy)
 - [Anexo A — Código final](#anexo-a--código-final)
 - [Anexo B — Glossário de conceitos](#anexo-b--glossário-de-conceitos)
 - [Anexo C — Comandos úteis](#anexo-c--comandos-úteis)
@@ -1523,6 +1531,315 @@ Mesmo ciclo de fechamento das partes anteriores.
 
 ---
 
+# Parte 6 — Bio dinâmica (segundo fetch + orquestração)
+
+Na Parte 5 buscamos a **lista de repos**. Agora vamos buscar o **perfil em si** (`/users/<login>`) e injetar avatar, nome, bio e estatísticas no card de perfil. Conceitos centrais: **progressive enhancement** (HTML estático como fallback), **fallback robusto de imagem** (`onerror` + `{once:true}`), `Intl.NumberFormat`, **orquestração de múltiplos fetches** com `Promise.all` e `Promise.allSettled`, e re-lançamento de erros pra observabilidade.
+
+**Decisão de design:** o HTML estático (nome "Wenceslau", bio escrita, `imagem.jpeg` local) **continua sendo o ponto de partida**. Se o `fetch` funcionar, o JS sobrescreve com dados frescos. Se falhar (sem internet, API fora, rate limit), o usuário **vê o card normal** — nada quebrado. Esse padrão é conhecido como progressive enhancement.
+
+## Bio 1 — Segundo endpoint + inspecionar JSON
+
+A API do GitHub tem dois endpoints públicos importantes:
+
+| URL | O que devolve |
+|-----|---------------|
+| `https://api.github.com/users/<user>/repos` | Array de repos (Parte 5) |
+| `https://api.github.com/users/<user>` | Objeto único com dados do **perfil** |
+
+Mesmo rate limit (60 req/h por IP), mesma autenticação (nenhuma).
+
+**Primeiro passo: centralizar a URL e fazer o fetch.**
+
+```js
+const USUARIO = 'wenceslaubaltor';
+const URL_PERFIL = `https://api.github.com/users/${USUARIO}`;
+const URL_REPOS  = `https://api.github.com/users/${USUARIO}/repos`;
+
+const carregarPerfil = async () => {
+    try {
+        const resposta = await fetch(URL_PERFIL);
+        if (!resposta.ok) throw new Error(`HTTP ${resposta.status} ao buscar perfil`);
+        const perfil = await resposta.json();
+        console.log('Perfil do GitHub:', perfil);
+    } catch (erro) {
+        console.error('Falha ao buscar perfil:', erro);
+    }
+};
+
+carregarPerfil();
+```
+
+**Campos do objeto que vamos usar nas próximas etapas:** `avatar_url`, `name`, `bio`, `public_repos`, `followers`, `following`, `html_url`. Inspecione no DevTools Console pra ver quais estão preenchidos na sua conta.
+
+## Bio 2 — Injetar `name` + `bio` (progressive enhancement)
+
+### O princípio
+
+**Progressive enhancement** = a página funciona **sem JavaScript**; o JS só **melhora** o que já existe. Aqui:
+- Sem JS / fetch falhou → usuário vê "Wenceslau" + bio escrita à mão (do HTML).
+- JS funcionou → JS sobrescreve com nome e bio do GitHub.
+
+O oposto do padrão SPA moderno (React etc.) onde o HTML inicial vem vazio e tudo é renderizado por JS. Pra uma página pessoal com toques dinâmicos, progressive enhancement é robusto e simples.
+
+### Mudanças
+
+**HTML — dar `id` aos elementos:**
+
+```html
+<img src="imagem.jpeg" alt="Foto de perfil de Wenceslau" id="avatar">
+<h1 id="nome">Wenceslau</h1>
+<p class="bio" id="bio">
+    Desenvolvedor curioso, aprendendo HTML e CSS...
+</p>
+```
+
+**JS — separar fetch e renderização. Truthy check antes de sobrescrever:**
+
+```js
+const elNome = document.querySelector('#nome');
+const elBio  = document.querySelector('#bio');
+
+const renderizarPerfil = (perfil) => {
+    if (perfil.name) elNome.textContent = perfil.name;
+    if (perfil.bio)  elBio.textContent  = perfil.bio;
+};
+```
+
+E `carregarPerfil` agora chama `renderizarPerfil(perfil)` em vez de `console.log`.
+
+### Conceitos
+- **Separação fetch × render**: facilita manutenção e testabilidade — uma função pega dados, outra desenha. Padrão "presenter/view".
+- **Truthy check** (`if (perfil.bio)`): cobre `null`, `undefined`, `''` numa linha só — idiomático em JS. Equivalente a `if (perfil.bio && perfil.bio.length > 0)`.
+- **`textContent` (não `innerHTML`)**: `name` e `bio` são input livre do usuário no GitHub. Se vier `<script>`, `innerHTML` executaria; `textContent` trata como texto. **Sempre prefira `textContent`** quando o conteúdo é texto puro.
+- **Por que NÃO mostrar erro na tela** (como fizemos com repos): porque o HTML estático **já é o fallback**. Se fetch falhar, usuário vê o card original — nada quebrado.
+
+## Bio 3 — Avatar com fallback robusto
+
+Trocar a `imagem.jpeg` local pelo avatar do GitHub. Pontos finos:
+
+1. **Tamanho otimizado** — query string `?s=300` pede uma versão de 300×300 (suficiente pra ~150px em telas Retina). Padrão da CDN de avatares do GitHub.
+2. **Fallback se a imagem falhar** — fetch pode ter sucesso, mas a imagem em si pode dar 404. Evento `error` no `<img>` cuida disso.
+3. **`alt` também muda** — se o `name` muda, o `alt` deve refletir (acessibilidade).
+
+```js
+const elAvatar = document.querySelector('#avatar');
+
+// Dentro de renderizarPerfil:
+if (perfil.name) {
+    elNome.textContent = perfil.name;
+    elAvatar.alt = `Foto de perfil de ${perfil.name}`;
+}
+
+if (perfil.avatar_url) {
+    elAvatar.addEventListener('error', () => {
+        elAvatar.src = 'imagem.jpeg';
+    }, { once: true });
+
+    elAvatar.src = `${perfil.avatar_url}&s=300`;
+}
+```
+
+### Conceitos
+- **`.src` é mutável**: setar `img.src = "..."` faz o navegador disparar nova requisição e renderizar quando chega.
+- **Evento `'error'` em `<img>`**: dispara quando a imagem falha em carregar (404, timeout, host fora). Padrão clássico de fallback.
+- **`{ once: true }`**: remove o listener após a primeira execução. Essencial pra evitar loop infinito — se a `imagem.jpeg` (fallback) também falhar, o handler não vai disparar pela segunda vez.
+- **Listener ANTES do `.src =`**: ordem importa. Se `.src` for atribuído primeiro e a imagem falhar instantaneamente (cache), o evento já passou antes do listener existir.
+- **`&s=300`** (não `?s=300`): a URL da API já vem com `?v=4`. Pra adicionar parâmetro a uma URL que já tem query string, usa `&`.
+
+## Bio 4 — Linha de stats clicáveis (`Intl.NumberFormat`)
+
+Linha logo abaixo da bio:
+
+```
+5 repos  ·  12 seguidores  ·  8 seguindo
+```
+
+Cada um leva pra aba correspondente no perfil do GitHub.
+
+**HTML** — elemento vazio no perfil section:
+```html
+<p id="stats" class="stats"></p>
+```
+
+**JS** — helpers e injeção via `innerHTML` (HTML construído por nós, seguro):
+
+```js
+const elStats = document.querySelector('#stats');
+
+const formatadorNumero = new Intl.NumberFormat('pt-BR');
+const plural = (n, singular, pluralForma) => n === 1 ? singular : pluralForma;
+
+// Dentro de renderizarPerfil, após avatar:
+elStats.innerHTML = `
+    <a href="${perfil.html_url}?tab=repositories" target="_blank" rel="noopener">
+        <strong>${formatadorNumero.format(perfil.public_repos)}</strong>
+        ${plural(perfil.public_repos, 'repo', 'repos')}
+    </a>
+    <a href="${perfil.html_url}?tab=followers" target="_blank" rel="noopener">
+        <strong>${formatadorNumero.format(perfil.followers)}</strong>
+        ${plural(perfil.followers, 'seguidor', 'seguidores')}
+    </a>
+    <a href="${perfil.html_url}?tab=following" target="_blank" rel="noopener">
+        <strong>${formatadorNumero.format(perfil.following)}</strong>
+        seguindo
+    </a>
+`;
+```
+
+**CSS** — flex com gap, reserva de altura pra evitar layout shift:
+
+```css
+.stats {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem 1rem;
+    font-size: 0.85rem;
+    color: var(--cor-texto-suave);
+    min-height: 1.4em; /* reserva espaço antes do JS preencher */
+}
+
+.stats a { color: var(--cor-texto-suave); text-decoration: none; }
+.stats a:hover { color: var(--cor-destaque); }
+.stats strong { color: var(--cor-texto); font-weight: 700; margin-right: 0.2rem; }
+```
+
+### Conceitos
+- **`Intl.NumberFormat('pt-BR')`**: irmã da `RelativeTimeFormat`. Formata números respeitando o locale — em pt-BR, separador de milhar é ponto (`1.234`). Importa pouco com 5 followers, escala quando o número cresce.
+- **Pluralização simples**: `Intl.PluralRules` existe mas é overkill aqui. Ternário resolve.
+- **Composição de URL via query string** (`?tab=repositories`): o GitHub respeita esses parâmetros. Padrão de qualquer SaaS.
+- **`<strong>` semântico**: dá ênfase pra leitores de tela. Mais correto que `<b>` puramente visual.
+- **`min-height: 1.4em`**: reserva altura **antes** do JS injetar. Sem isso, o card "pula" pra cima quando os dados chegam — fenômeno chamado **Cumulative Layout Shift (CLS)**, métrica do Google Core Web Vitals.
+
+## Bio 5 — `Promise.all` (orquestração explícita)
+
+### Verdade incômoda
+
+O código que tinha no fim do `script.js` já era paralelo:
+
+```js
+carregarRepos();
+carregarPerfil();
+```
+
+Cada `async` é chamada **sem `await`**, então ambas disparam seus `fetch`s imediatamente e voltam Promises. **A paralelização já existia** — só não estava explícita.
+
+### O que `Promise.all` adiciona
+
+Um **ponto único de orquestração** — você sabe **quando tudo terminou**. Útil pra:
+- Logar "página totalmente carregada" (analytics, observabilidade)
+- Disparar animação pós-carregamento
+- Marcar `<body>` com atributo que CSS pode usar
+- Decidir mostrar/esconder um spinner global
+
+```js
+const init = async () => {
+    const inicio = performance.now();
+
+    await Promise.all([
+        carregarPerfil(),
+        carregarRepos(),
+    ]);
+
+    const duracao = Math.round(performance.now() - inicio);
+    console.log(`Tudo carregado em ${duracao}ms.`);
+};
+
+init();
+```
+
+### Conceitos
+- **`Promise.all([p1, p2])`**: retorna uma Promise única que resolve com array `[v1, v2]` quando todas resolvem. **Rejeita imediatamente** se qualquer uma rejeitar (fail-fast — as outras continuam mas o resultado se perde).
+- **`performance.now()`**: API nativa, devolve ms com fração desde o load. Muito melhor que `Date.now()` pra medir intervalos curtos.
+- **`async` sem nada pra `await`** é erro de sintaxe redundante — mas como precisamos do `await Promise.all(...)`, faz sentido marcar `init` como `async`.
+- **Renderização continua progressiva**: o `Promise.all` só observa, não bloqueia. Cada seção (perfil, repos) aparece **assim que sua própria requisição termina** — não esperam pelo `Promise.all`.
+
+## Bio 6 — `Promise.allSettled` (falhas independentes)
+
+### Problema da Bio 5
+
+Hoje as funções `carregar*` engolem seus erros (`catch` → `console.error`), então `Promise.all` **sempre resolve** mesmo com tudo dando errado. O log `Tudo carregado em Xms` é mentiroso.
+
+Queremos:
+1. **Cada falha continua tratada localmente** (card de perfil mantém fallback estático, repos mantêm bloco vermelho de erro).
+2. **A orquestração também sabe o que aconteceu** — pode logar com clareza, futuramente reagir.
+
+### A refatoração
+
+**`carregarPerfil` perde o `try/catch`** — o fallback é o HTML estático, JS não tem nada a fazer no erro:
+
+```js
+const carregarPerfil = async () => {
+    const resposta = await fetch(URL_PERFIL);
+    if (!resposta.ok) throw new Error(`HTTP ${resposta.status} ao buscar perfil`);
+    const perfil = await resposta.json();
+    renderizarPerfil(perfil);
+};
+```
+
+**`carregarRepos` mantém o `catch`** (precisa pintar o bloco vermelho), mas **re-lança** no final:
+
+```js
+} catch (erro) {
+    listaRepos.innerHTML = `<div class="repo-erro">...</div>`;
+    throw erro; // observabilidade na orquestração
+}
+```
+
+**`init` usa `Promise.allSettled`** e inspeciona cada resultado:
+
+```js
+const init = async () => {
+    const inicio = performance.now();
+
+    const resultados = await Promise.allSettled([
+        carregarPerfil(),
+        carregarRepos(),
+    ]);
+
+    const duracao = Math.round(performance.now() - inicio);
+    const nomes = ['perfil', 'repos'];
+
+    resultados.forEach((r, i) => {
+        if (r.status === 'fulfilled') {
+            console.log(`✓ ${nomes[i]} carregado`);
+        } else {
+            console.warn(`✗ ${nomes[i]} falhou:`, r.reason.message);
+        }
+    });
+
+    console.log(`Carregamento finalizado em ${duracao}ms.`);
+};
+```
+
+### Conceitos
+- **`Promise.allSettled([p1, p2])`**: irmã resiliente do `all`. Espera todas terminarem (sucesso ou fracasso), devolve `[{ status: 'fulfilled', value } | { status: 'rejected', reason }]`. **Nunca rejeita**. Use quando cada Promise é independente.
+- **`all` × `allSettled`** — guia mental: "tudo-ou-nada" → `all`; "tente todos, me diga o que aconteceu" → `allSettled`.
+- **Rethrow no catch**: padrão "handle then propagate" — você captura pra fazer efeito local (DOM, log, métrica), e re-lança pra que quem chamou também saiba. Comum em código pro.
+- **Função `async` sem `try/catch`**: válido e idiomático. Só envolva em try/catch quando tem algo concreto pra fazer no erro. Se o fallback é "não fazer nada / HTML estático", deixe propagar.
+- **`console.warn` × `console.error`**: `error` (vermelho) pra "atenção urgente"; `warn` (amarelo) pra "isso aconteceu, já está tratado, fica de olho". Quando o erro **já tem fallback local**, `warn` é apropriado.
+- **`r.reason`**: o objeto `Error` que foi lançado. `.message` é a string passada no `new Error(...)`; `r.reason` direto traz stack completo.
+
+## Bio 7 — Polimento, commit e deploy
+
+### Checagem local
+- Abrir `xdg-open ~/projetos/perfil-web/index.html`.
+- Card de perfil mostra avatar do GitHub + nome + bio + linha de stats clicáveis.
+- Hover nos stats vira azul; clique abre na aba certa do GitHub.
+- Console mostra `✓ perfil carregado` e `✓ repos carregado`.
+- Quebrar `URL_PERFIL` (fake) → card mantém estático ("Wenceslau" + bio + `imagem.jpeg`), console mostra `✗ perfil falhou`.
+- Quebrar `URL_REPOS` (fake) → perfil normal, bloco vermelho na seção de repos.
+- Modo offline (Network → Offline) → tudo cai mas nada quebra; ambos falham no console.
+- Tema escuro: tudo continua legível.
+
+### Ciclo padrão
+1. `git add . && git commit -m "..."` (mensagem multi-linha).
+2. `git push`.
+3. Aguardar Pages rebuildar (~30-60s).
+4. Confirmar no site público que o avatar e a bio carregam do GitHub.
+
+---
+
 # Anexo A — Código final
 
 ## `index.html`
@@ -1542,12 +1859,13 @@ Mesmo ciclo de fechamento das partes anteriores.
 
     <main>
         <section class="perfil">
-            <img src="imagem.jpeg" alt="Foto de perfil de Wenceslau">
-            <h1>Wenceslau</h1>
-            <p class="bio">
+            <img src="imagem.jpeg" alt="Foto de perfil de Wenceslau" id="avatar">
+            <h1 id="nome">Wenceslau</h1>
+            <p class="bio" id="bio">
                 Desenvolvedor curioso, aprendendo HTML e CSS para construir
                 minha presença na web.
             </p>
+            <p id="stats" class="stats"></p>
             <button id="botao-oi" type="button">Mandar um oi</button>
             <p id="mensagem-oi"></p>
         </section>
@@ -1755,6 +2073,25 @@ main {
     font-size: 0.9rem;
     min-height: 1.4em;
 }
+
+/* ---------- Stats do perfil (repos · seguidores · seguindo) ---------- */
+.stats {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem 1rem;
+    font-size: 0.85rem;
+    color: var(--cor-texto-suave);
+    min-height: 1.4em;  /* reserva espaço pra evitar layout shift */
+}
+
+.stats a {
+    color: var(--cor-texto-suave);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+.stats a:hover { color: var(--cor-destaque); }
+.stats strong { color: var(--cor-texto); font-weight: 700; margin-right: 0.2rem; }
 
 /* ---------- Botão de tema (fixo, canto superior direito) ---------- */
 #botao-tema {
@@ -2027,9 +2364,13 @@ const aoDigitar = () => {
 
 inputBusca.addEventListener('input', aoDigitar);
 
-// ---------- Buscar e renderizar repos reais do GitHub ----------
-const URL_REPOS = 'https://api.github.com/users/wenceslaubaltor/repos';
+// ---------- URLs da GitHub API ----------
+const USUARIO = 'wenceslaubaltor';
+const URL_PERFIL = `https://api.github.com/users/${USUARIO}`;
+const URL_REPOS  = `https://api.github.com/users/${USUARIO}/repos`;
 const LIMITE_REPOS = 6;
+
+// ---------- Repos ----------
 const listaRepos = document.querySelector('#lista-repos');
 
 const formatadorRelativo = new Intl.RelativeTimeFormat('pt-BR', { numeric: 'auto' });
@@ -2067,9 +2408,7 @@ const repoParaCard = (repo) => {
 const carregarRepos = async () => {
     try {
         const resposta = await fetch(URL_REPOS);
-        if (!resposta.ok) {
-            throw new Error(`HTTP ${resposta.status} ao buscar repos`);
-        }
+        if (!resposta.ok) throw new Error(`HTTP ${resposta.status} ao buscar repos`);
         const repos = await resposta.json();
 
         const visiveis = repos
@@ -2084,17 +2423,88 @@ const carregarRepos = async () => {
 
         listaRepos.innerHTML = visiveis.map(repoParaCard).join('');
     } catch (erro) {
-        console.error('Falha ao buscar repos:', erro);
         listaRepos.innerHTML = `
             <div class="repo-erro">
                 <strong>Não foi possível carregar os repos.</strong>
                 ${erro.message}
             </div>
         `;
+        throw erro; // observabilidade na orquestração
     }
 };
 
-carregarRepos();
+// ---------- Perfil (progressive enhancement do card de perfil) ----------
+const elAvatar = document.querySelector('#avatar');
+const elNome   = document.querySelector('#nome');
+const elBio    = document.querySelector('#bio');
+const elStats  = document.querySelector('#stats');
+
+const formatadorNumero = new Intl.NumberFormat('pt-BR');
+const plural = (n, singular, pluralForma) => n === 1 ? singular : pluralForma;
+
+const renderizarPerfil = (perfil) => {
+    if (perfil.name) {
+        elNome.textContent = perfil.name;
+        elAvatar.alt = `Foto de perfil de ${perfil.name}`;
+    }
+    if (perfil.bio) elBio.textContent = perfil.bio;
+
+    if (perfil.avatar_url) {
+        elAvatar.addEventListener('error', () => {
+            elAvatar.src = 'imagem.jpeg';
+        }, { once: true });
+        elAvatar.src = `${perfil.avatar_url}&s=300`;
+    }
+
+    elStats.innerHTML = `
+        <a href="${perfil.html_url}?tab=repositories" target="_blank" rel="noopener">
+            <strong>${formatadorNumero.format(perfil.public_repos)}</strong>
+            ${plural(perfil.public_repos, 'repo', 'repos')}
+        </a>
+        <a href="${perfil.html_url}?tab=followers" target="_blank" rel="noopener">
+            <strong>${formatadorNumero.format(perfil.followers)}</strong>
+            ${plural(perfil.followers, 'seguidor', 'seguidores')}
+        </a>
+        <a href="${perfil.html_url}?tab=following" target="_blank" rel="noopener">
+            <strong>${formatadorNumero.format(perfil.following)}</strong>
+            seguindo
+        </a>
+    `;
+};
+
+// Sem try/catch: o HTML estático já é o fallback visual.
+// Deixamos a rejeição propagar para a orquestração.
+const carregarPerfil = async () => {
+    const resposta = await fetch(URL_PERFIL);
+    if (!resposta.ok) throw new Error(`HTTP ${resposta.status} ao buscar perfil`);
+    const perfil = await resposta.json();
+    renderizarPerfil(perfil);
+};
+
+// ---------- Orquestração inicial ----------
+const init = async () => {
+    const inicio = performance.now();
+
+    const resultados = await Promise.allSettled([
+        carregarPerfil(),
+        carregarRepos(),
+    ]);
+
+    const duracao = Math.round(performance.now() - inicio);
+    const nomes = ['perfil', 'repos'];
+
+    resultados.forEach((r, i) => {
+        if (r.status === 'fulfilled') {
+            console.log(`✓ ${nomes[i]} carregado`);
+        } else {
+            console.warn(`✗ ${nomes[i]} falhou:`, r.reason.message);
+        }
+    });
+
+    console.log(`Carregamento finalizado em ${duracao}ms.`);
+};
+
+init();
 ```
 
 ---
@@ -2266,6 +2676,8 @@ carregarRepos();
 | `async function` | Marca a função como assíncrona. Sempre retorna uma Promise |
 | `await` | Dentro de `async`: pausa e devolve o valor da Promise quando resolver |
 | `try`/`catch`/`throw` | Bloco de tratamento de erro. `throw` interrompe e pula pro `catch` |
+| Rethrow (`throw erro` no `catch`) | Trata efeito local (DOM, log) e re-lança pra quem chamou também saber. Padrão "handle then propagate" |
+| Função `async` sem `try/catch` | Válido — se ela lançar, a Promise rejeita e quem chamou trata |
 | `response.ok` | `true` se status HTTP é 2xx. **`fetch` não rejeita em 404/500** — precisa checar |
 | `response.json()` | Parseia o corpo da resposta como JSON. Também é assíncrono |
 | `response.status` | Código HTTP numérico (200, 404, 500, …) |
@@ -2273,6 +2685,18 @@ carregarRepos();
 | `target="_blank" rel="noopener"` | Abre em nova aba sem dar acesso ao `window.opener` (segurança) |
 | XSS via `innerHTML` | Vetor quando string vem de input não confiável. API do GitHub é segura |
 | Rate limit | API limita requests. GitHub: 60/hora por IP sem auth |
+
+## JavaScript — orquestração de Promises
+
+| Termo | Definição |
+|-------|-----------|
+| `Promise.all([p1, p2])` | Resolve com `[v1, v2]` quando todas resolvem; rejeita imediatamente se qualquer uma rejeitar (fail-fast) |
+| `Promise.allSettled([p1, p2])` | Espera todas (sucesso ou fracasso); devolve `[{status, value/reason}, …]`. **Nunca rejeita** |
+| `Promise.race([p1, p2])` | Resolve/rejeita com a primeira que terminar (timeout patterns) |
+| `Promise.any([p1, p2])` | Resolve com a primeira que **resolver** (ignora rejeições) |
+| `all` × `allSettled` — quando usar | `all`: dependentes ("tudo ou nada"). `allSettled`: independentes ("tente todos, me diga o que aconteceu") |
+| `performance.now()` | Tempo em ms (com fração) desde o load. Melhor que `Date.now()` pra medir intervalos curtos |
+| `console.warn` × `console.error` | `warn`: já tratado, fica de olho. `error`: precisa de atenção urgente |
 
 ## JavaScript — arrays (avançado)
 
@@ -2292,8 +2716,31 @@ carregarRepos();
 | `Intl` | Namespace nativo do navegador para formatação consciente de idioma |
 | `Intl.RelativeTimeFormat` | Formata datas relativas ("há 3 dias", "ontem") em qualquer locale |
 | `numeric: 'auto'` | Ativa frases naturais: "ontem", "amanhã" em vez de "há 1 dia" |
-| `Intl.NumberFormat` | Formata números, moedas, percentuais por locale |
+| `Intl.NumberFormat('pt-BR')` | Formata números: `1234` → `'1.234'` em pt-BR (separador de milhar = ponto) |
 | `Intl.DateTimeFormat` | Formata datas absolutas ("22 de junho de 2026") |
+| `Intl.PluralRules` | Pluralização correta por idioma (overkill para 2 formas; útil pra árabe/russo etc.) |
+
+## JavaScript — DOM (avançado)
+
+| Termo | Definição |
+|-------|-----------|
+| `img.src = '...'` | Setar `.src` dispara nova requisição e renderiza quando chega |
+| Evento `'error'` em `<img>` | Dispara quando a imagem falha em carregar (404, host fora, timeout) |
+| `{ once: true }` em `addEventListener` | Remove o listener após a primeira execução (evita loops de fallback) |
+| Listener ANTES do `.src =` | Ordem importa: imagem cacheada pode falhar instantaneamente antes do listener registrar |
+| Truthy check (`if (valor)`) | Cobre `null`, `undefined`, `''`, `0`, `false`, `NaN` numa expressão só |
+| `textContent` × `innerHTML` | `textContent` é seguro (string vira texto). `innerHTML` parseia como HTML — risco de XSS com input não confiável |
+
+## Padrões de UX
+
+| Termo | Definição |
+|-------|-----------|
+| Progressive enhancement | Página funciona sem JS; JS apenas **melhora** o que já existe |
+| Fallback estático | HTML com conteúdo padrão que serve como UX quando o JS / API falham |
+| Skeleton screens | Placeholders no formato do conteúdo final (não spinners genéricos) |
+| Layout shift (CLS) | Quando elementos "pulam" ao carregarem. Reservar altura (`min-height`) evita |
+| Core Web Vitals | Métricas do Google de qualidade percebida: LCP, CLS, INP |
+| Composição de URL via query string | `?tab=repositories`, `?s=300`, `&q=...` — padrão de qualquer SaaS |
 
 ## CSS — animações
 
@@ -2412,8 +2859,9 @@ xdg-open ~/projetos/perfil-web/index.html
 | **Acessibilidade ARIA** | Atributos extras para leitores de tela em UI complexa |
 | **JS: `.reduce`** | Acumular valor a partir de array (somas, agrupamentos, objetos) |
 | **JS: módulos (`import`/`export`)** | Dividir `script.js` em múltiplos arquivos com responsabilidade clara |
-| **JS: Promise.all / Promise.race** | Disparar múltiplos `fetch` em paralelo e aguardar |
 | **JS: `AbortController`** | Cancelar `fetch` em andamento (útil em buscas com debounce) |
+| **JS: cache local com timestamp** | Salvar resposta da API em `localStorage` e revalidar só após N minutos |
+| **Web Components** | Criar elementos HTML customizados reutilizáveis (`<repo-card>`) |
 | **TypeScript** | JavaScript com tipos verificados em tempo de desenvolvimento |
 | **Build tools (Vite/esbuild)** | Bundle, minificação e dev server quando o projeto crescer |
 
@@ -2429,11 +2877,11 @@ xdg-open ~/projetos/perfil-web/index.html
 ## Possíveis evoluções da página
 
 - **Domínio próprio:** R$ 40/ano em registro.br por `.com.br`, aponta para GitHub Pages
-- **Bio dinâmica:** buscar dados de `/users/wenceslaubaltor` (avatar, bio, contagem de followers) e injetar no card de perfil
 - **Tema tri-estado:** claro / escuro / automático (segue SO) com 3 estados no botão
 - **Eliminar FOUC:** script inline no `<head>` que aplica `tema-escuro` antes do `<body>` renderizar
-- **Cache local dos repos:** salvar resposta em `localStorage` com timestamp; revalidar só após N minutos (reduz uso do rate limit)
+- **Cache local dos repos e perfil:** salvar resposta em `localStorage` com timestamp; revalidar só após N minutos (reduz uso do rate limit de 60/h)
 - **Topic filter:** botões pra filtrar repos por `topics` (tags do GitHub) no estilo das pílulas do GitHub
+- **Pinned repos:** consumir GraphQL API do GitHub pra mostrar só os repos "pinned" (vitrine curada manualmente em vez de top-6 por updated_at)
 - **Formulário de contato:** com serviços como Formspree (sem backend)
 - **Análise:** GoatCounter ou Plausible (privacy-friendly, sem cookies)
 - **PWA:** transformar em app instalável (manifest + service worker)

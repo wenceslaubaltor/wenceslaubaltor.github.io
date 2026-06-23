@@ -81,9 +81,13 @@ const aoDigitar = () => {
 
 inputBusca.addEventListener('input', aoDigitar);
 
-// ---------- Buscar e renderizar repos reais do GitHub ----------
-const URL_REPOS = 'https://api.github.com/users/wenceslaubaltor/repos';
+// ---------- URLs da GitHub API ----------
+// Centralizamos as URLs no topo para facilitar mudança e revisão.
+const USUARIO = 'wenceslaubaltor';
+const URL_PERFIL = `https://api.github.com/users/${USUARIO}`;
+const URL_REPOS  = `https://api.github.com/users/${USUARIO}/repos`;
 const LIMITE_REPOS = 6;
+
 const listaRepos = document.querySelector('#lista-repos');
 
 // Formatador de datas relativas em pt-BR ("há 3 dias", "há 2 meses"…).
@@ -154,17 +158,109 @@ const carregarRepos = async () => {
         // join(''): array de strings vira string única.
         listaRepos.innerHTML = visiveis.map(repoParaCard).join('');
     } catch (erro) {
-        // Útil para o desenvolvedor (abre o DevTools e vê o stack).
-        console.error('Falha ao buscar repos:', erro);
-
-        // E feedback visível para o usuário no lugar dos skeletons.
+        // Efeito local: substituir os skeletons pelo bloco de erro.
         listaRepos.innerHTML = `
             <div class="repo-erro">
                 <strong>Não foi possível carregar os repos.</strong>
                 ${erro.message}
             </div>
         `;
+        // Re-lança para a orquestração também saber que esta parte falhou.
+        // Sem isso, init() vê "tudo ok" enquanto a UI mostra erro — confuso.
+        throw erro;
     }
 };
 
-carregarRepos();
+// ---------- Buscar e renderizar dados do perfil do usuário ----------
+// Princípio: progressive enhancement. O HTML estático já tem nome e bio
+// hardcoded; o JS só sobrescreve se a API responder com valores reais.
+// Se algum campo vier null/vazio, o conteúdo estático permanece.
+
+const elAvatar = document.querySelector('#avatar');
+const elNome   = document.querySelector('#nome');
+const elBio    = document.querySelector('#bio');
+const elStats  = document.querySelector('#stats');
+
+// Formatador de números em pt-BR (separador de milhar = ponto).
+const formatadorNumero = new Intl.NumberFormat('pt-BR');
+
+// Pluralização simples: devolve singular se n === 1, senão plural.
+const plural = (n, singular, pluralForma) => n === 1 ? singular : pluralForma;
+
+const renderizarPerfil = (perfil) => {
+    if (perfil.name) {
+        elNome.textContent = perfil.name;
+        elAvatar.alt = `Foto de perfil de ${perfil.name}`;
+    }
+    if (perfil.bio) elBio.textContent = perfil.bio;
+
+    if (perfil.avatar_url) {
+        // Fallback: se a imagem remota falhar, cai para a local.
+        // {once:true} remove o listener após a primeira execução —
+        // se o fallback também falhar, evita loop infinito de erro.
+        elAvatar.addEventListener('error', () => {
+            elAvatar.src = 'imagem.jpeg';
+        }, { once: true });
+
+        // ?s=300: o GitHub serve a imagem nesse tamanho (~150px @2x).
+        // A URL da API já vem com ?v=4, então usamos & para concatenar.
+        elAvatar.src = `${perfil.avatar_url}&s=300`;
+    }
+
+    // Stats clicáveis. Cada link abre direto na aba relevante do GitHub.
+    elStats.innerHTML = `
+        <a href="${perfil.html_url}?tab=repositories" target="_blank" rel="noopener">
+            <strong>${formatadorNumero.format(perfil.public_repos)}</strong>
+            ${plural(perfil.public_repos, 'repo', 'repos')}
+        </a>
+        <a href="${perfil.html_url}?tab=followers" target="_blank" rel="noopener">
+            <strong>${formatadorNumero.format(perfil.followers)}</strong>
+            ${plural(perfil.followers, 'seguidor', 'seguidores')}
+        </a>
+        <a href="${perfil.html_url}?tab=following" target="_blank" rel="noopener">
+            <strong>${formatadorNumero.format(perfil.following)}</strong>
+            seguindo
+        </a>
+    `;
+};
+
+const carregarPerfil = async () => {
+    // Sem try/catch aqui: o HTML estático já é o fallback visual,
+    // então o JS não tem nada a fazer no erro. Deixamos a rejeição
+    // propagar para a orquestração (init) saber que falhou.
+    const resposta = await fetch(URL_PERFIL);
+    if (!resposta.ok) {
+        throw new Error(`HTTP ${resposta.status} ao buscar perfil`);
+    }
+    const perfil = await resposta.json();
+    renderizarPerfil(perfil);
+};
+
+// ---------- Orquestração inicial ----------
+// Dispara perfil e repos em paralelo. Usamos Promise.allSettled (não all)
+// porque cada parte tem seu próprio tratamento de erro: se uma cair,
+// a outra deve continuar funcionando e queremos saber exatamente o que
+// aconteceu com cada uma.
+const init = async () => {
+    const inicio = performance.now();
+
+    const resultados = await Promise.allSettled([
+        carregarPerfil(),
+        carregarRepos(),
+    ]);
+
+    const duracao = Math.round(performance.now() - inicio);
+    const nomes = ['perfil', 'repos'];
+
+    resultados.forEach((r, i) => {
+        if (r.status === 'fulfilled') {
+            console.log(`✓ ${nomes[i]} carregado`);
+        } else {
+            console.warn(`✗ ${nomes[i]} falhou:`, r.reason.message);
+        }
+    });
+
+    console.log(`Carregamento finalizado em ${duracao}ms.`);
+};
+
+init();

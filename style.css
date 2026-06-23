@@ -286,6 +286,34 @@ body.tema-escuro .repo-erro {
     min-height: 1.4em;
 }
 
+/* ---------- Stats do perfil (repos · seguidores · seguindo) ---------- */
+.stats {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem 1rem;
+    font-size: 0.85rem;
+    color: var(--cor-texto-suave);
+    /* Reserva altura mesmo antes do JS preencher, pra evitar layout shift. */
+    min-height: 1.4em;
+}
+
+.stats a {
+    color: var(--cor-texto-suave);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+.stats a:hover {
+    color: var(--cor-destaque);
+}
+
+.stats strong {
+    color: var(--cor-texto);
+    font-weight: 700;
+    margin-right: 0.2rem;
+}
+
 /* ---------- Botão de tema (canto superior direito, fixo) ---------- */
 #botao-tema {
     position: fixed;
